@@ -61,7 +61,7 @@ export class ListingController {
         'My listings retrieved successfully'
       );
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
@@ -76,7 +76,7 @@ export class ListingController {
       const listing = await this.listingService.updateListing(id, farmerId, req.body);
       return ResponseHandler.success(res, listing, 'Listing updated successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
@@ -92,7 +92,7 @@ export class ListingController {
       const listing = await this.listingService.updateListingStatus(id, farmerId, status);
       return ResponseHandler.success(res, listing, 'Listing status updated successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
@@ -107,7 +107,7 @@ export class ListingController {
       await this.listingService.deleteListing(id, farmerId);
       return ResponseHandler.success(res, null, 'Listing deleted successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
@@ -121,7 +121,7 @@ export class ListingController {
       const stats = await this.listingService.getListingStats(farmerId);
       return ResponseHandler.success(res, stats, 'Listing stats retrieved successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
