@@ -1,5 +1,5 @@
 import Notification, { INotification } from './notification.model';
-import { EmailService } from '../../common/utils/email';
+import EmailService from '../../common/utils/email';
 import { PaginationUtil } from '../../common/utils/pagination';
 import User from '../users/user.model';
 import { NotFoundError } from '../../common/errors/AppError';
@@ -15,12 +15,6 @@ interface CreateNotificationData {
 }
 
 class NotificationService {
-  private emailService: EmailService;
-
-  constructor() {
-    this.emailService = new EmailService();
-  }
-
   async createNotification(data: CreateNotificationData): Promise<INotification> {
     const notification = await Notification.create({
       ...data,
@@ -232,7 +226,7 @@ class NotificationService {
   }
 
   private async sendEmail(to: string, subject: string, message: string): Promise<void> {
-    await this.emailService.sendEmail({
+    await EmailService.send({
       to,
       subject,
       text: message,

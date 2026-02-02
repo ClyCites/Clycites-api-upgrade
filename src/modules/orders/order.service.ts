@@ -267,7 +267,7 @@ class OrderService {
     return stats;
   }
 
-  private calculateDeliveryFee(deliveryOption: string, region: string): number {
+  private calculateDeliveryFee(deliveryOption: string, _region: string): number {
     // Simple delivery fee calculation based on delivery option
     const baseRates: Record<string, number> = {
       'pickup': 0,
