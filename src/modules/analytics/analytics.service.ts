@@ -1,6 +1,5 @@
 import Order from '../orders/order.model';
 import Listing from '../marketplace/listing.model';
-import Product from '../products/product.model';
 import Farmer from '../farmers/farmer.model';
 import User from '../users/user.model';
 import mongoose from 'mongoose';

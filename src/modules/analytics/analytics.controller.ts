@@ -57,9 +57,9 @@ export class AnalyticsController {
         resolvedFarmerId,
         req.query
       );
-      ResponseHandler.success(res, performance, 'Farmer performance retrieved successfully');
+      return ResponseHandler.success(res, performance, 'Farmer performance retrieved successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
@@ -73,9 +73,9 @@ export class AnalyticsController {
         resolvedFarmerId,
         req.query
       );
-      ResponseHandler.success(res, performance, 'Performance metrics retrieved successfully');
+      return ResponseHandler.success(res, performance, 'Performance metrics retrieved successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 
