@@ -1,4 +1,4 @@
-import User, { IUser } from '../users/user.model';
+import User from '../users/user.model';
 import OTP from './otp.model';
 import RefreshToken from './refreshToken.model';
 import { PasswordUtil } from '../../common/utils/password';

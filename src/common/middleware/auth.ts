@@ -7,7 +7,12 @@ export interface JwtPayload {
   id: string;
   email: string;
   role: string;
+  farmerId?: string;
   permissions?: string[];
+}
+
+export interface AuthRequest extends Request {
+  user?: JwtPayload;
 }
 
 declare global {

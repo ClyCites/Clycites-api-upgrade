@@ -1,53 +1,167 @@
 # ClyCites API - Agricultural E-Market Platform
 
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.11-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green.svg)](https://www.mongodb.com/)
 [![Express](https://img.shields.io/badge/Express-4.18-lightgrey.svg)](https://expressjs.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## 🌾 Overview
 
-ClyCites is a state-of-the-art digital platform designed to transform agriculture by connecting farmers, buyers, experts, and market data into one intelligent ecosystem. The platform leverages modern software engineering, data analytics, and AI to improve agricultural productivity, market access, pricing transparency, and economic sustainability.
+ClyCites is a comprehensive digital agricultural e-market platform that connects farmers directly with buyers, providing transparent pricing, secure transactions, market intelligence, and logistics coordination. Built with modern TypeScript, Express.js, and MongoDB, the platform features advanced search, real-time analytics, multi-channel notifications, and role-based access control.
 
-## ✨ Key Features
+**🎯 Mission**: Empower African farmers with technology to increase income, reduce post-harvest losses, and improve market access.
 
-- **🔐 Authentication & Authorization** - JWT-based auth with OTP verification
-- **👥 Role-Based Access Control (RBAC)** - Admin, Farmer, Buyer, Expert, Trader roles
-- **🌾 Farmer Management** - Profile, farm management, and verification
-- **🥕 Product Management** - Crop and livestock product catalog
-- **🛒 Agricultural E-Market** - Digital marketplace for buying and selling
-- **💳 Payment Integration** - MTN MoMo, Airtel Money support
-- **🚚 Logistics** - Delivery coordination and tracking
-- **🤖 AI-Powered Assistant** - Smart recommendations and price predictions
-- **📊 Market Intelligence** - Analytics, trends, and insights
-- **👨‍🔬 Expert Portal** - Knowledge sharing and consultation
-- **📧 Notifications** - Email, SMS, and push notifications
+## ✨ Core Features
 
-## 🏗️ Architecture
+### 🔐 Authentication & Security
+- JWT-based authentication with refresh tokens
+- OTP email verification for account security
+- Password reset functionality
+- Role-based access control (Admin, Farmer, Buyer, Expert, Trader)
+- Secure password hashing with bcrypt
+- Rate limiting to prevent abuse
+
+### 👨‍🌾 Farmer Management
+- Complete farmer profile management
+- Multiple farm management
+- Farm details (size, location, soil type, water sources, crops)
+- Verification system for trusted farmers
+- Performance analytics and ratings
+
+### 🥕 Product Catalog
+- Comprehensive product database
+- Categories: Grains, Vegetables, Fruits, Livestock, Dairy
+- Product variants and specifications
+- Unit management (kg, ton, bag, piece, liter, crate)
+- Minimum order quantities
+
+### 🛒 Marketplace
+- Advanced listing system with quality grades (Premium, Standard, Economy)
+- Multi-criteria search and filtering:
+  - By product, region, district
+  - Price range filtering
+  - Quality filtering
+  - Availability dates
+- Delivery options (pickup, local, regional, national)
+- View tracking and inquiry counting
+- Listing analytics for farmers
+
+### 📦 Order Management
+- Complete order lifecycle:
+  - Pending → Confirmed → Processing → In Transit → Delivered → Completed
+- Automatic order numbering system
+- Order cancellation with reason tracking
+- Detailed delivery address management
+- Order statistics and history
+- Farmer and buyer order views
+
+### 📊 Analytics & Market Intelligence
+- Market overview dashboard
+- Price trend analysis
+- Product demand forecasting
+- Supply analysis by region
+- Farmer performance metrics
+- Regional market analysis
+- Market health indicators
+- Fulfillment rate tracking
+- Return buyer rate analytics
+
+### 🔔 Notifications
+- Multi-channel notifications:
+  - Email notifications
+  - SMS notifications (integration ready)
+  - Push notifications (integration ready)
+  - In-app notifications
+- Notification types: Order, Payment, Listing, Message, System, Marketing
+- Priority levels: Low, Medium, High, Urgent
+- Unread count tracking
+- Notification preferences
+
+### 💡 Additional Features
+- Pagination support on all list endpoints
+- Comprehensive input validation
+- Structured error handling
+- Request/response logging
+- CORS support
+- API versioning (/api/v1)
+- Health check endpoint
+
+## 🏗️ Project Structure
 
 ```
 src/
-├── modules/              # Feature modules
-│   ├── auth/            # Authentication & authorization
-│   ├── users/           # User management
-│   ├── farmers/         # Farmer profiles & farms
-│   ├── products/        # Product catalog
-│   ├── marketplace/     # Listings & marketplace
-│   ├── orders/          # Order management
-│   ├── payments/        # Payment processing
-│   ├── logistics/       # Delivery & logistics
-│   ├── weather/         # Weather data integration
-│   ├── ai-assistant/    # AI recommendations
-│   ├── analytics/       # Market intelligence
-│   ├── experts/         # Expert portal
-│   ├── notifications/   # Notification service
-│   └── admin/           # Admin panel
-├── common/              # Shared utilities
-│   ├── config/          # Configuration
-│   ├── middleware/      # Express middleware
-│   ├── utils/           # Utility functions
-│   ├── errors/          # Error classes
-│   └── validators/      # Validation schemas
+├── modules/                    # Feature modules
+│   ├── auth/                  # Authentication & authorization
+│   │   ├── auth.controller.ts
+│   │   ├── auth.service.ts
+│   │   ├── auth.routes.ts
+│   │   ├── auth.validator.ts
+│   │   ├── otp.model.ts
+│   │   └── refreshToken.model.ts
+│   ├── users/                 # User management
+│   │   ├── user.model.ts
+│   │   └── role.model.ts
+│   ├── farmers/               # Farmer profiles & farms
+│   │   ├── farmer.model.ts
+│   │   ├── farm.model.ts
+│   │   ├── farmer.service.ts
+│   │   ├── farmer.controller.ts
+│   │   ├── farmer.validator.ts
+│   │   └── farmer.routes.ts
+│   ├── products/              # Product catalog
+│   │   ├── product.model.ts
+│   │   ├── product.service.ts
+│   │   ├── product.controller.ts
+│   │   ├── product.validator.ts
+│   │   └── product.routes.ts
+│   ├── marketplace/           # Listings & marketplace
+│   │   ├── listing.model.ts
+│   │   ├── listing.service.ts
+│   │   ├── listing.controller.ts
+│   │   ├── listing.validator.ts
+│   │   └── listing.routes.ts
+│   ├── orders/                # Order management
+│   │   ├── order.model.ts
+│   │   ├── order.service.ts
+│   │   ├── order.controller.ts
+│   │   ├── order.validator.ts
+│   │   └── order.routes.ts
+│   ├── notifications/         # Notification service
+│   │   ├── notification.model.ts
+│   │   ├── notification.service.ts
+│   │   ├── notification.controller.ts
+│   │   ├── notification.validator.ts
+│   │   └── notification.routes.ts
+│   └── analytics/             # Market intelligence
+│       ├── analytics.service.ts
+│       ├── analytics.controller.ts
+│       ├── analytics.validator.ts
+│       └── analytics.routes.ts
+├── common/                     # Shared utilities
+│   ├── config/                # Configuration
+│   │   └── index.ts
+│   ├── database/              # Database connection
+│   │   └── connection.ts
+│   ├── middleware/            # Express middleware
+│   │   ├── auth.ts           # JWT authentication
+│   │   ├── authorize.ts       # RBAC authorization
+│   │   ├── errorHandler.ts    # Global error handler
+│   │   ├── rateLimiter.ts     # Rate limiting
+│   │   └── validate.ts        # Input validation
+│   ├── utils/                 # Utility functions
+│   │   ├── logger.ts         # Winston logging
+│   │   ├── response.ts        # Response formatter
+│   │   ├── password.ts        # Password utilities
+│   │   ├── token.ts          # JWT utilities
+│   │   ├── otp.ts            # OTP generation
+│   │   ├── pagination.ts      # Pagination helper
+│   │   └── email.ts          # Email service
+│   └── errors/                # Error classes
+│       └── AppError.ts
+├── app.ts                      # Express application setup
+├── routes.ts                   # Central route registration
+└── server.ts                   # Server entry point
 ├── routes.ts            # Route registration
 └── app.ts               # Application entry point
 ```
