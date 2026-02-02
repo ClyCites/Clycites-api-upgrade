@@ -1,17 +1,17 @@
-import jwt from 'jsonwebtoken';
+import jwt, { Secret, SignOptions } from 'jsonwebtoken';
 import config from '../config';
 import { JwtPayload } from '../middleware/auth';
 
 export class TokenUtil {
   static generateAccessToken(payload: JwtPayload): string {
-    return jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.expire,
+    return jwt.sign(payload, config.jwt.secret as Secret, {
+      expiresIn: config.jwt.expire as SignOptions['expiresIn'],
     });
   }
 
   static generateRefreshToken(payload: JwtPayload): string {
-    return jwt.sign(payload, config.jwt.refreshSecret, {
-      expiresIn: config.jwt.refreshExpire,
+    return jwt.sign(payload, config.jwt.refreshSecret as Secret, {
+      expiresIn: config.jwt.refreshExpire as SignOptions['expiresIn'],
     });
   }
 
