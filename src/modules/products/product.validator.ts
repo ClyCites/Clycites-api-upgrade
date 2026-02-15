@@ -8,27 +8,10 @@ export const createProductValidator = [
   body('category')
     .notEmpty()
     .withMessage('Category is required')
-    .isIn(['grains', 'vegetables', 'fruits', 'livestock', 'dairy', 'other'])
-    .withMessage('Invalid category'),
-  body('unit')
-    .notEmpty()
-    .withMessage('Unit is required')
-    .isIn(['kg', 'ton', 'bag', 'piece', 'liter', 'crate'])
-    .withMessage('Invalid unit'),
-  body('variety')
-    .optional()
     .trim(),
   body('description')
     .optional()
     .trim(),
-  body('minOrderQuantity')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Minimum order quantity must be at least 1'),
-  body('images')
-    .optional()
-    .isArray()
-    .withMessage('Images must be an array'),
 ];
 
 export const updateProductValidator = [
@@ -42,26 +25,14 @@ export const updateProductValidator = [
     .withMessage('Product name cannot be empty'),
   body('category')
     .optional()
-    .isIn(['grains', 'vegetables', 'fruits', 'livestock', 'dairy', 'other'])
-    .withMessage('Invalid category'),
-  body('unit')
+    .trim(),
+  body('description')
     .optional()
-    .isIn(['kg', 'ton', 'bag', 'piece', 'liter', 'crate'])
-    .withMessage('Invalid unit'),
-  body('minOrderQuantity')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Minimum order quantity must be at least 1'),
+    .trim(),
 ];
 
 export const productIdValidator = [
   param('id')
     .isMongoId()
     .withMessage('Invalid product ID'),
-];
-
-export const categoryValidator = [
-  param('category')
-    .isIn(['grains', 'vegetables', 'fruits', 'livestock', 'dairy', 'other'])
-    .withMessage('Invalid category'),
 ];

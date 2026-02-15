@@ -1,36 +1,31 @@
 import Product, { IProduct } from './product.model';
-import { NotFoundError, ConflictError } from '../../common/errors/AppError';
-import { PaginationUtil } from '../../common/utils/pagination';
+import { ConflictError, NotFoundError } from '../../common/errors/AppError';
 
 interface CreateProductData {
   name: string;
-  category: 'grains' | 'vegetables' | 'fruits' | 'livestock' | 'dairy' | 'other';
-  variety?: string;
+  category: string;
   description?: string;
-  unit: 'kg' | 'ton' | 'bag' | 'piece' | 'liter' | 'crate';
-  minOrderQuantity?: number;
-  images?: string[];
 }
 
 class ProductService {
   async createProduct(data: CreateProductData): Promise<IProduct> {
-    // Check if product with same name and variety exists
-    const existingProduct = await Product.findOne({
-      name: data.name,
-      variety: data.variety || { $exists: false },
-    });
+    const existingProduct = await Product.findOne({ name: data.name });
 
     if (existingProduct) {
-      throw new ConflictError('Product with same name and variety already exists');
+      throw new ConflictError('Product already exists');
     }
 
     const product = await Product.create(data);
     return product;
   }
 
+  async getProducts(): Promise<IProduct[]> {
+    const products = await Product.find().sort({ name: 1 }).populate('prices').lean();
+    return products as IProduct[];
+  }
+
   async getProductById(productId: string): Promise<IProduct> {
     const product = await Product.findById(productId);
-
     if (!product) {
       throw new NotFoundError('Product not found');
     }
@@ -38,60 +33,20 @@ class ProductService {
     return product;
   }
 
-  async getAllProducts(query: any) {
-    const { page, limit, sortBy, sortOrder } = PaginationUtil.getPaginationParams(query);
-    const skip = PaginationUtil.getSkip(page, limit);
-    const sort = PaginationUtil.getSortObject(sortBy, sortOrder);
-
-    const filter: any = { isActive: true };
-
-    if (query.category) {
-      filter.category = query.category;
-    }
-
-    if (query.search) {
-      filter.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { description: { $regex: query.search, $options: 'i' } },
-        { variety: { $regex: query.search, $options: 'i' } },
-      ];
-    }
-
-    const [products, total] = await Promise.all([
-      Product.find(filter).sort(sort).skip(skip).limit(limit),
-      Product.countDocuments(filter),
-    ]);
-
-    return PaginationUtil.buildPaginationResult(products, total, page, limit);
-  }
-
   async updateProduct(productId: string, updateData: Partial<CreateProductData>): Promise<IProduct> {
-    const product = await Product.findById(productId);
-
+    const product = await Product.findByIdAndUpdate(productId, updateData, { new: true });
     if (!product) {
       throw new NotFoundError('Product not found');
     }
-
-    Object.assign(product, updateData);
-    await product.save();
 
     return product;
   }
 
   async deleteProduct(productId: string): Promise<void> {
-    const product = await Product.findById(productId);
-
+    const product = await Product.findByIdAndDelete(productId);
     if (!product) {
       throw new NotFoundError('Product not found');
     }
-
-    product.isActive = false;
-    await product.save();
-  }
-
-  async getProductsByCategory(category: string) {
-    const products = await Product.find({ category, isActive: true });
-    return products;
   }
 }
 

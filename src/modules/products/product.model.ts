@@ -2,13 +2,13 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IProduct extends Document {
   name: string;
-  category: 'grains' | 'vegetables' | 'fruits' | 'livestock' | 'dairy' | 'other';
+  category: string;
   variety?: string;
   description?: string;
-  unit: 'kg' | 'ton' | 'bag' | 'piece' | 'liter' | 'crate';
-  minOrderQuantity: number;
-  images: string[];
-  isActive: boolean;
+  unit?: 'kg' | 'ton' | 'bag' | 'piece' | 'liter' | 'crate';
+  minOrderQuantity?: number;
+  images?: string[];
+  isActive?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,10 +20,10 @@ const ProductSchema = new Schema<IProduct>(
       required: [true, 'Product name is required'],
       trim: true,
       index: true,
+      unique: true,
     },
     category: {
       type: String,
-      enum: ['grains', 'vegetables', 'fruits', 'livestock', 'dairy', 'other'],
       required: [true, 'Category is required'],
       index: true,
     },
@@ -38,7 +38,7 @@ const ProductSchema = new Schema<IProduct>(
     unit: {
       type: String,
       enum: ['kg', 'ton', 'bag', 'piece', 'liter', 'crate'],
-      required: [true, 'Unit is required'],
+      required: false,
     },
     minOrderQuantity: {
       type: Number,
@@ -56,11 +56,20 @@ const ProductSchema = new Schema<IProduct>(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
 // Indexes
 ProductSchema.index({ name: 1, category: 1 });
 ProductSchema.index({ isActive: 1 });
+
+ProductSchema.virtual('prices', {
+  ref: 'Price',
+  localField: '_id',
+  foreignField: 'product',
+  justOne: false,
+});
 
 export default mongoose.model<IProduct>('Product', ProductSchema);

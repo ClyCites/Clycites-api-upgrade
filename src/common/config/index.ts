@@ -73,6 +73,9 @@ interface Config {
   cors: {
     allowedOrigins: string[];
   };
+  priceMonitor: {
+    serviceUrl: string;
+  };
   kafka: {
     brokers: string[];
     clientId: string;
@@ -163,6 +166,9 @@ const config: Config = {
   },
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  },
+  priceMonitor: {
+    serviceUrl: process.env.PRICE_MONITOR_URL || `http://localhost:${process.env.PRICE_MONITOR_PORT || '5010'}`,
   },
   kafka: {
     brokers: process.env.KAFKA_BROKERS?.split(',') || ['localhost:9092'],
