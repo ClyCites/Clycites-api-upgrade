@@ -73,6 +73,20 @@ interface Config {
   cors: {
     allowedOrigins: string[];
   };
+  kafka: {
+    brokers: string[];
+    clientId: string;
+    groupId: string;
+  };
+  services: {
+    authPort: number;
+    farmersPort: number;
+    productsPort: number;
+    marketplacePort: number;
+    ordersPort: number;
+    notificationsPort: number;
+    analyticsPort: number;
+  };
   admin: {
     email: string;
     initialPassword: string;
@@ -149,6 +163,20 @@ const config: Config = {
   },
   cors: {
     allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+  },
+  kafka: {
+    brokers: process.env.KAFKA_BROKERS?.split(',') || ['localhost:9092'],
+    clientId: process.env.KAFKA_CLIENT_ID || 'clycites-api',
+    groupId: process.env.KAFKA_GROUP_ID || 'clycites-services',
+  },
+  services: {
+    authPort: parseInt(process.env.AUTH_SERVICE_PORT || '5001', 10),
+    farmersPort: parseInt(process.env.FARMERS_SERVICE_PORT || '5002', 10),
+    productsPort: parseInt(process.env.PRODUCTS_SERVICE_PORT || '5003', 10),
+    marketplacePort: parseInt(process.env.MARKETPLACE_SERVICE_PORT || '5004', 10),
+    ordersPort: parseInt(process.env.ORDERS_SERVICE_PORT || '5005', 10),
+    notificationsPort: parseInt(process.env.NOTIFICATIONS_SERVICE_PORT || '5006', 10),
+    analyticsPort: parseInt(process.env.ANALYTICS_SERVICE_PORT || '5007', 10),
   },
   admin: {
     email: process.env.ADMIN_EMAIL || 'admin@clycites.com',

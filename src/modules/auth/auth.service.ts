@@ -1,10 +1,12 @@
 import User from '../users/user.model';
+import { v4 as uuidv4 } from 'uuid';
 import OTP from './otp.model';
 import RefreshToken from './refreshToken.model';
 import { PasswordUtil } from '../../common/utils/password';
 import { TokenUtil } from '../../common/utils/token';
 import { OTPUtil } from '../../common/utils/otp';
 import EmailService from '../../common/utils/email';
+import { publishEvent } from '../../common/broker/kafka';
 import {
   BadRequestError,
   UnauthorizedError,
@@ -43,6 +45,19 @@ class AuthService {
     const user = await User.create({
       ...data,
       password: hashedPassword,
+    });
+
+    await publishEvent('users.registered', {
+      eventId: uuidv4(),
+      occurredAt: new Date().toISOString(),
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        isEmailVerified: user.isEmailVerified,
+      },
     });
 
     // Generate OTP for email verification

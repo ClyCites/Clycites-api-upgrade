@@ -5,8 +5,24 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/app.ts",
+    "dev:auth": "nodemon --exec ts-node src/services/auth/app.ts",
+    "dev:farmers": "nodemon --exec ts-node src/services/farmers/app.ts",
+    "dev:products": "nodemon --exec ts-node src/services/products/app.ts",
+    "dev:marketplace": "nodemon --exec ts-node src/services/marketplace/app.ts",
+    "dev:orders": "nodemon --exec ts-node src/services/orders/app.ts",
+    "dev:notifications": "nodemon --exec ts-node src/services/notifications/app.ts",
+    "dev:analytics": "nodemon --exec ts-node src/services/analytics/app.ts",
+    "dev:all": "concurrently -n auth,farmers,products,marketplace,orders,notifications,analytics -c blue,green,magenta,cyan,yellow,gray,white \"npm:dev:auth\" \"npm:dev:farmers\" \"npm:dev:products\" \"npm:dev:marketplace\" \"npm:dev:orders\" \"npm:dev:notifications\" \"npm:dev:analytics\"",
     "build": "tsc",
     "start": "node dist/app.js",
+    "start:auth": "node dist/services/auth/app.js",
+    "start:farmers": "node dist/services/farmers/app.js",
+    "start:products": "node dist/services/products/app.js",
+    "start:marketplace": "node dist/services/marketplace/app.js",
+    "start:orders": "node dist/services/orders/app.js",
+    "start:notifications": "node dist/services/notifications/app.js",
+    "start:analytics": "node dist/services/analytics/app.js",
+    "start:all": "concurrently -n auth,farmers,products,marketplace,orders,notifications,analytics -c blue,green,magenta,cyan,yellow,gray,white \"npm:start:auth\" \"npm:start:farmers\" \"npm:start:products\" \"npm:start:marketplace\" \"npm:start:orders\" \"npm:start:notifications\" \"npm:start:analytics\"",
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix"
@@ -38,7 +54,9 @@
     "nodemailer": "^6.9.7",
     "axios": "^1.6.2",
     "uuid": "^9.0.1",
-    "date-fns": "^3.0.6"
+    "date-fns": "^3.0.6",
+    "kafkajs": "^2.2.4",
+    "concurrently": "^8.2.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
