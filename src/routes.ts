@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authRoutes from './modules/auth/auth.routes';
 import farmerRoutes from './modules/farmers/farmer.routes';
+import farmersEnterpriseRoutes from './modules/farmers/farmersEnterprise.routes';
 import productRoutes from './modules/products/product.routes';
 import listingRoutes from './modules/marketplace/listing.routes';
 import orderRoutes from './modules/orders/order.routes';
@@ -17,7 +18,8 @@ const API_VERSION = '/api/v1';
 
 // Mount routes
 router.use(`${API_VERSION}/auth`, authRoutes);
-router.use(`${API_VERSION}/farmers`, farmerRoutes);
+router.use(`${API_VERSION}/farmers`, farmersEnterpriseRoutes); // Enterprise Farmers Module
+router.use(`${API_VERSION}/farmers/legacy`, farmerRoutes); // Legacy routes (backward compatibility)
 router.use(`${API_VERSION}/products`, productRoutes);
 router.use(`${API_VERSION}/listings`, listingRoutes);
 router.use(`${API_VERSION}/orders`, orderRoutes);

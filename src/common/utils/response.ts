@@ -118,10 +118,26 @@ export class ResponseHandler {
   }
 }
 
-// Convenience function for backward compatibility
+// Convenience functions for backward compatibility
 export const successResponse = <T>(
   res: Response,
   data: T,
   message = 'Success',
   statusCode = 200
 ): Response => ResponseHandler.success(res, data, message, statusCode);
+
+export const sendSuccess = <T>(
+  res: Response,
+  data: T,
+  message = 'Success',
+  statusCode = 200,
+  meta?: Record<string, any>
+): Response => ResponseHandler.success(res, data, message, statusCode, meta);
+
+export const sendError = (
+  res: Response,
+  message: string,
+  statusCode = 500,
+  errorCode = 'ERROR',
+  details?: any
+): Response => ResponseHandler.error(res, message, statusCode, errorCode, details);
