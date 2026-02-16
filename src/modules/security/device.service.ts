@@ -6,7 +6,6 @@ import crypto from 'crypto';
 import {
   NotFoundError,
   UnauthorizedError,
-  BadRequestError,
 } from '../../common/errors/AppError';
 
 interface DeviceInfo {

@@ -15,7 +15,7 @@ class OrganizationController {
 
       return successResponse(res, organization, 'Organization created successfully', 201);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -27,7 +27,7 @@ class OrganizationController {
       const organization = await OrganizationService.getById(req.params.id);
       return successResponse(res, organization);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -44,7 +44,7 @@ class OrganizationController {
 
       return successResponse(res, organization, 'Organization updated successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -60,7 +60,7 @@ class OrganizationController {
 
       return successResponse(res, result, 'Member invited successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -76,7 +76,7 @@ class OrganizationController {
 
       return successResponse(res, member, 'Invitation accepted successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -92,7 +92,7 @@ class OrganizationController {
 
       return successResponse(res, members);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -110,7 +110,7 @@ class OrganizationController {
 
       return successResponse(res, null, 'Member removed successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -128,7 +128,7 @@ class OrganizationController {
 
       return successResponse(res, member, 'Member role updated successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -143,7 +143,7 @@ class OrganizationController {
 
       return successResponse(res, organizations);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

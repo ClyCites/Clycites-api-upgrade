@@ -1,5 +1,5 @@
 import Organization, { IOrganization } from './organization.model';
-import OrganizationMember from './organizationMember.model';
+import OrganizationMember, { IOrganizationMember } from './organizationMember.model';
 import User from '../users/user.model';
 import Role from '../users/role.model';
 import AuditService from '../audit/audit.service';
@@ -9,6 +9,7 @@ import {
   NotFoundError,
   ConflictError,
 } from '../../common/errors/AppError';
+import { Types } from 'mongoose';
 
 interface CreateOrganizationData {
   name: string;
@@ -31,6 +32,19 @@ interface InviteMemberData {
   department?: string;
   title?: string;
   invitedBy: string;
+}
+
+interface InviteMemberResult {
+  member: IOrganizationMember;
+  invitationUrl: string;
+}
+
+interface UserOrganization {
+  organization: Types.ObjectId | IOrganization;
+  role: Types.ObjectId | { name: string; description?: string };
+  joinedAt?: Date;
+  department?: string;
+  title?: string;
 }
 
 class OrganizationService {
@@ -175,7 +189,7 @@ class OrganizationService {
   /**
    * Invite member to organization
    */
-  async inviteMember(orgId: string, data: InviteMemberData): Promise<any> {
+  async inviteMember(orgId: string, data: InviteMemberData): Promise<InviteMemberResult> {
     const organization = await this.getById(orgId);
 
     // Check if organization is active
@@ -189,7 +203,7 @@ class OrganizationService {
     }
 
     // Find user by email
-    let user = await User.findOne({ email: data.email });
+    const user = await User.findOne({ email: data.email });
 
     // Check if already a member
     if (user) {
@@ -258,7 +272,7 @@ class OrganizationService {
   /**
    * Accept organization invitation
    */
-  async acceptInvitation(token: string, userId: string): Promise<any> {
+  async acceptInvitation(token: string, userId: string): Promise<IOrganizationMember> {
     const member = await OrganizationMember.findOne({
       invitationToken: token,
       status: 'invited',
@@ -273,7 +287,7 @@ class OrganizationService {
     }
 
     // Update member status
-    member.user = userId as any;
+    member.user = new Types.ObjectId(userId);
     member.status = 'active';
     member.joinedAt = new Date();
     member.invitationToken = undefined;
@@ -305,8 +319,8 @@ class OrganizationService {
   /**
    * Get organization members
    */
-  async getMembers(orgId: string, filters?: any): Promise<any[]> {
-    const query: any = { organization: orgId };
+  async getMembers(orgId: string, filters?: { status?: string }): Promise<IOrganizationMember[]> {
+    const query: Record<string, unknown> = { organization: orgId };
 
     if (filters?.status) {
       query.status = filters.status;
@@ -343,7 +357,7 @@ class OrganizationService {
 
     // Update member status
     member.status = 'removed';
-    member.removedBy = removedBy as any;
+    member.removedBy = new Types.ObjectId(removedBy);
     member.removedAt = new Date();
     member.removalReason = reason;
     await member.save();
@@ -377,7 +391,7 @@ class OrganizationService {
     memberId: string,
     newRoleId: string,
     updatedBy: string
-  ): Promise<any> {
+  ): Promise<IOrganizationMember> {
     const member = await OrganizationMember.findOne({
       _id: memberId,
       organization: orgId,
@@ -399,7 +413,7 @@ class OrganizationService {
     }
 
     const oldRoleId = member.role;
-    member.role = newRoleId as any;
+    member.role = new Types.ObjectId(newRoleId);
     await member.save();
 
     // Audit log
@@ -421,7 +435,7 @@ class OrganizationService {
   /**
    * Get user's organizations
    */
-  async getUserOrganizations(userId: string): Promise<any[]> {
+  async getUserOrganizations(userId: string): Promise<UserOrganization[]> {
     const memberships = await OrganizationMember.find({
       user: userId,
       status: 'active',

@@ -56,7 +56,7 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
     // Rate limit per user if authenticated, otherwise per IP
-    return (req as any).user?.id || getClientIp(req);
+    return req.user?.id || getClientIp(req);
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -111,7 +111,7 @@ export const authLimiter: RateLimitRequestHandler = rateLimit({
         timestamp: new Date(),
       });
     } catch (error) {
-      console.error('Failed to log brute force attempt:', error);
+      // Silent fail - don't break rate limiting if logging fails
     }
 
     res.status(429).json({

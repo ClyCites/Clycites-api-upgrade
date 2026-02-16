@@ -19,7 +19,7 @@ class AuditController {
 
       return successResponse(res, logs);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -40,7 +40,7 @@ class AuditController {
 
       return successResponse(res, logs);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -60,7 +60,7 @@ class AuditController {
 
       return successResponse(res, logs);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -79,7 +79,7 @@ class AuditController {
 
       return successResponse(res, logs);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

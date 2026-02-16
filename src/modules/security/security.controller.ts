@@ -12,7 +12,7 @@ class SecurityController {
       const result = await MFAService.setupTOTP(req.user!.id);
       return successResponse(res, result, 'TOTP setup initiated');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -28,7 +28,7 @@ class SecurityController {
 
       return successResponse(res, result, 'TOTP enabled successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -40,7 +40,7 @@ class SecurityController {
       await MFAService.enableEmailOTP(req.user!.id);
       return successResponse(res, null, 'Email OTP enabled successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -52,7 +52,7 @@ class SecurityController {
       await MFAService.sendEmailOTP(req.user!.id);
       return successResponse(res, null, 'OTP sent to your email');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -64,7 +64,7 @@ class SecurityController {
       await MFAService.disableMFA(req.user!.id);
       return successResponse(res, null, 'MFA disabled successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -76,7 +76,7 @@ class SecurityController {
       const devices = await DeviceService.getUserDevices(req.user!.id);
       return successResponse(res, devices);
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -88,7 +88,7 @@ class SecurityController {
       await DeviceService.verifyDevice(req.user!.id, req.params.deviceId);
       return successResponse(res, null, 'Device verified successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -105,7 +105,7 @@ class SecurityController {
 
       return successResponse(res, null, 'Device blocked successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 
@@ -117,7 +117,7 @@ class SecurityController {
       await DeviceService.revokeDevice(req.user!.id, req.params.deviceId);
       return successResponse(res, null, 'Device revoked successfully');
     } catch (error) {
-      next(error);
+      return next(error);
     }
   }
 }

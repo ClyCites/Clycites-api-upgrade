@@ -2,10 +2,11 @@ import crypto from 'crypto';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import MFASecret from './mfaSecret.model';
-import Device from './device.model';
 import User from '../users/user.model';
+import Organization from '../organizations/organization.model';
 import OTP from '../auth/otp.model';
 import { OTPUtil } from '../../common/utils/otp';
+import { PasswordUtil } from '../../common/utils/password';
 import EmailService from '../../common/utils/email';
 import AuditService from '../audit/audit.service';
 import {
