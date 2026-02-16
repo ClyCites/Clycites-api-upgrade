@@ -71,7 +71,7 @@ class OAuthService {
   async handleCallback(
     providerId: string,
     code: string,
-    state: string
+    _state: string
   ): Promise<{ user: any; tokens: any; isNewUser: boolean }> {
     const provider = await OAuthProvider.findById(providerId);
 
@@ -289,8 +289,8 @@ class OAuthService {
    * Real implementation requires OAuth2 library like `passport` or `oauth4webapi`
    */
   private async exchangeCodeForToken(
-    provider: any,
-    code: string
+    _provider: any,
+    _code: string
   ): Promise<{ access_token: string; refresh_token?: string; expires_at?: number }> {
     // TODO: Implement actual OAuth2 token exchange
     // This is a placeholder
@@ -304,7 +304,7 @@ class OAuthService {
   /**
    * Placeholder: Get user info from OAuth provider
    */
-  private async getUserInfo(provider: any, accessToken: string): Promise<any> {
+  private async getUserInfo(_provider: any, _accessToken: string): Promise<any> {
     // TODO: Implement actual user info retrieval
     // This is a placeholder
     return {

@@ -1,11 +1,9 @@
 import ResourcePolicy, { IResourcePolicy } from './resourcePolicy.model';
 import OrganizationMember from '../organizations/organizationMember.model';
-import AuthorizationService from './authorization.service';
 import { AuditService } from '../audit';
 import {
   ForbiddenError,
   NotFoundError,
-  BadRequestError,
 } from '../../common/errors/AppError';
 
 interface ResourceAccessCheck {
