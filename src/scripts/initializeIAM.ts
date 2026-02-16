@@ -3,25 +3,41 @@ import Role from '../modules/users/role.model';
 import Permission from '../modules/permissions/permission.model';
 
 /**
- * Initialize IAM system with default permissions and roles
+ * Comprehensive IAM System Initialization
+ * Production-grade Identity and Access Management setup
  */
 async function initializeIAMSystem() {
-  console.log('🚀 Initializing IAM System...');
+  console.log('🚀 Initializing Comprehensive IAM System...');
+  console.log('📊 This will create:');
+  console.log('   - Enterprise-grade permissions');
+  console.log('   - Global platform roles');
+  console.log('   - Organization role templates');
+  console.log('   - Hybrid identity support (Individual + Organization users)');
+  console.log('');
 
   try {
     // 1. Initialize default permissions
-    console.log('📋 Creating default permissions...');
+    console.log('📋 Creating enterprise permissions...');
     await PermissionService.initializeDefaultPermissions();
     const permissionCount = await Permission.countDocuments();
     console.log(`✅ ${permissionCount} permissions initialized`);
 
     // 2. Create default global roles
-    console.log('👥 Creating default global roles...');
+    console.log('👥 Creating global platform roles...');
     await createDefaultRoles();
     const roleCount = await Role.countDocuments({ scope: 'global' });
     console.log(`✅ ${roleCount} global roles created`);
 
+    console.log('');
     console.log('✅ IAM System initialized successfully!');
+    console.log('');
+    console.log('📝 Summary:');
+    console.log(`   - Permissions: ${permissionCount}`);
+    console.log(`   - Global Roles: ${roleCount}`);
+    console.log(`   - Individual users can operate with personal workspaces`);
+    console.log(`   - Organizations can invite members and manage access`);
+    console.log(`   - Full RBAC + PBAC support enabled`);
+    console.log('');
   } catch (error) {
     console.error('❌ Failed to initialize IAM System:', error);
     throw error;
@@ -29,24 +45,129 @@ async function initializeIAMSystem() {
 }
 
 /**
- * Create default system roles
+ * Create comprehensive default system roles
+ * Supports both individual and organizational users
  */
 async function createDefaultRoles() {
   const permissions = await Permission.find();
   const permissionMap = new Map(permissions.map(p => [p.name, p._id]));
 
-  // Platform Administrator (Super Admin)
+  // ============================================
+  // GLOBAL PLATFORM ROLES (For ALL Users)
+  // ============================================
+
+  // Platform Super Administrator
   const platformAdminPerms = permissions.map(p => p._id);
   await createRoleIfNotExists({
-    name: 'Platform Administrator',
-    slug: 'platform-admin',
-    description: 'Full platform access with all permissions',
+    name: 'Platform Super Admin',
+    slug: 'platform-super-admin',
+    description: 'Full platform access - can manage everything globally',
     scope: 'global',
     level: 0,
     isSystem: true,
     isDefault: false,
     permissions: platformAdminPerms,
   });
+
+  // Farmer (Individual User - Default for new users)
+  const farmerPermissions = [
+    'users:read:own',
+    'users:update:own',
+    'products:create:own',
+    'products:read:own',
+    'products:update:own',
+    'products:delete:own',
+    'orders:create:own',
+    'orders:read:own',
+    'orders:update:own',
+    'orders:cancel:own',
+    'markets:read:global',
+    'products:read:global',
+    'analytics:read:own',
+  ];
+
+  await createRoleIfNotExists({
+    name: 'Farmer',
+    slug: 'farmer',
+    description: 'Individual farmer with personal workspace - can operate independently without organization',
+    scope: 'global',
+    level: 100,
+    isSystem: true,
+    isDefault: true,
+    permissions: farmerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+  });
+
+  // Buyer (Individual/Organization Buyer)
+  const buyerPermissions = [
+    'users:read:own',
+    'users:update:own',
+    'products:read:global',
+    'orders:create:own',
+    'orders:read:own',
+    'orders:cancel:own',
+    'markets:read:global',
+  ];
+
+  await createRoleIfNotExists({
+    name: 'Buyer',
+    slug: 'buyer',
+    description: 'Marketplace buyer - can browse and purchase products',
+    scope: 'global',
+    level: 100,
+    isSystem: true,
+    isDefault: false,
+    permissions: buyerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+  });
+
+  // Trader
+  const traderPermissions = [
+    'users:read:own',
+    'users:update:own',
+    'products:create:own',
+    'products:read:global',
+    'products:update:own',
+    'products:delete:own',
+    'orders:create:own',
+    'orders:read:own',
+    'orders:update:own',
+    'markets:read:global',
+    'analytics:read:own',
+  ];
+
+  await createRoleIfNotExists({
+    name: 'Trader',
+    slug: 'trader',
+    description: 'Agricultural trader - can create/manage products and orders',
+    scope: 'global',
+    level: 100,
+    isSystem: true,
+    isDefault: false,
+    permissions: traderPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+  });
+
+  // Expert (Agricultural Advisor)
+  const expertPermissions = [
+    'users:read:own',
+    'users:update:own',
+    'products:read:global',
+    'markets:read:global',
+    'analytics:read:global',
+  ];
+
+  await createRoleIfNotExists({
+    name: 'Expert',
+    slug: 'expert',
+    description: 'Agricultural expert/advisor - analytics and insights access',
+    scope: 'global',
+    level: 50,
+    isSystem: true,
+    isDefault: false,
+    permissions: expertPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+  });
+
+  // ============================================
+  // ORGANIZATION ROLES (For Multi-Tenant)
+  // ============================================
 
   // Organization Administrator
   const orgAdminPermissions = [

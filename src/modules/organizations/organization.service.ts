@@ -1,8 +1,7 @@
 import Organization, { IOrganization } from './organization.model';
 import OrganizationMember, { IOrganizationMember } from './organizationMember.model';
-import User from '../users/user.model';
-import Role from '../users/role.model';
-import AuditService from '../audit/audit.service';
+import { User, Role } from '../users';
+import { AuditService } from '../audit';
 import crypto from 'crypto';
 import {
   BadRequestError,

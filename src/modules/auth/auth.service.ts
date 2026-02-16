@@ -7,6 +7,10 @@ import { TokenUtil } from '../../common/utils/token';
 import { OTPUtil } from '../../common/utils/otp';
 import EmailService from '../../common/utils/email';
 import { publishEvent } from '../../common/broker/kafka';
+import PersonalWorkspaceService from '../users/personalWorkspace.service';
+import DeviceService from '../security/device.service';
+import SecurityEvent from '../security/securityEvent.model';
+import { AuditService } from '../audit';
 import {
   BadRequestError,
   UnauthorizedError,
@@ -47,6 +51,17 @@ class AuthService {
       password: hashedPassword,
     });
 
+    // Create personal workspace for individual user
+    try {
+      await PersonalWorkspaceService.create({
+        userId: user._id.toString(),
+        displayName: `${user.firstName}'s Workspace`,
+      });
+    } catch (error) {
+      // Log but don't fail registration
+      console.error('Failed to create personal workspace:', error);
+    }
+
     await publishEvent('users.registered', {
       eventId: uuidv4(),
       occurredAt: new Date().toISOString(),
@@ -85,6 +100,20 @@ class AuthService {
       user: user._id,
       token: tokens.refreshToken,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    });
+
+    // Audit log
+    await AuditService.log({
+      action: 'auth.register',
+      resource: 'user',
+      resourceId: user._id.toString(),
+      userId: user._id.toString(),
+      details: {
+        after: {
+          email: user.email,
+          role: user.role,
+        },
+      },
     });
 
     return {
