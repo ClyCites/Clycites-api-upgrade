@@ -127,6 +127,54 @@ class EmailService {
       html,
     });
   }
+
+  async sendSecurityAlert(
+    email: string,
+    details: {
+      eventType: string;
+      location?: string;
+      device?: string;
+      timestamp?: Date;
+      ipAddress?: string;
+    }
+  ): Promise<void> {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #d32f2f;">⚠️ Security Alert</h2>
+        <p>We detected ${details.eventType} on your ClyCites account.</p>
+        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
+          <p><strong>Event:</strong> ${details.eventType}</p>
+          <p><strong>Time:</strong> ${details.timestamp ? details.timestamp.toLocaleString() : new Date().toLocaleString()}</p>
+          ${details.ipAddress || details.location ? `<p><strong>IP Address:</strong> ${details.ipAddress || details.location}</p>` : ''}
+          ${details.device ? `<p><strong>Device:</strong> ${details.device}</p>` : ''}
+        </div>
+        <p>If this was you, you can safely ignore this email.</p>
+        <p>If you don't recognize this activity:</p>
+        <ul>
+          <li>Change your password immediately</li>
+          <li>Review your recent account activity</li>
+          <li>Enable Two-Factor Authentication (2FA)</li>
+          <li>Contact our support team</li>
+        </ul>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${config.cors.allowedOrigins[0]}/security" style="background-color: #d32f2f; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Review Security Settings
+          </a>
+        </div>
+        <hr>
+        <p style="color: #888; font-size: 12px;">
+          ClyCites Security Team<br>
+          This is an automated security notification.
+        </p>
+      </div>
+    `;
+
+    await this.send({
+      to: email,
+      subject: 'ClyCites - Security Alert',
+      html,
+    });
+  }
 }
 
 export default new EmailService();

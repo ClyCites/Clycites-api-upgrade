@@ -30,4 +30,13 @@ export class TokenUtil {
       expiresIn: config.jwt.expire,
     };
   }
+
+  static generateMfaSessionToken(payload: JwtPayload): string {
+    // MFA session token valid for 5 minutes
+    return jwt.sign(
+      { ...payload, mfaSession: true },
+      config.jwt.secret as Secret,
+      { expiresIn: '5m' }
+    );
+  }
 }

@@ -6,10 +6,7 @@ import { AuditService } from '../audit';
 import { PasswordUtil } from '../../common/utils/password';
 import { TokenUtil } from '../../common/utils/token';
 import EmailService from '../../common/utils/email';
-import {
-  UnauthorizedError,
-  BadRequestError,
-} from '../../common/errors/AppError';
+import { UnauthorizedError } from '../../common/errors/AppError';
 
 interface LoginRequest {
   email: string;
@@ -132,7 +129,9 @@ class EnhancedAuthService {
     if (requiresMfa && !mfaCode) {
       // Generate temporary MFA session token
       const mfaSessionToken = TokenUtil.generateMfaSessionToken({
-        userId: user._id.toString(),
+        id: user._id.toString(),
+        email: user.email,
+        role: user.role,
         deviceId: device.deviceId,
       });
 

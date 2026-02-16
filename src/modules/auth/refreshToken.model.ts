@@ -5,6 +5,8 @@ export interface IRefreshToken extends Document {
   token: string;
   expiresAt: Date;
   isRevoked: boolean;
+  revokedAt?: Date;
+  deviceId?: string;
   createdAt: Date;
 }
 

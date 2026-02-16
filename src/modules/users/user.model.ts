@@ -48,6 +48,9 @@ export interface IUser extends Document {
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date; // Soft delete
+  
+  // Methods
+  isLocked(): boolean;
 }
 
 const UserSchema = new Schema<IUser>(
