@@ -25,6 +25,7 @@
     "start:analytics": "node dist/services/analytics/app.js",
     "start:price-monitor": "python flask-app/app.py",
     "start:all": "concurrently -n auth,farmers,products,marketplace,orders,notifications,analytics,price-monitor -c blue,green,magenta,cyan,yellow,gray,white,red \"npm:start:auth\" \"npm:start:farmers\" \"npm:start:products\" \"npm:start:marketplace\" \"npm:start:orders\" \"npm:start:notifications\" \"npm:start:analytics\" \"npm:start:price-monitor\"",
+    "init:iam": "ts-node src/scripts/initializeIAM.ts",
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix"
@@ -42,11 +43,13 @@
     "express": "^4.18.2",
     "mongoose": "^8.0.3",
     "bcryptjs": "^2.4.3",
+    "argon2": "^0.31.2",
     "jsonwebtoken": "^9.0.2",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
     "express-rate-limit": "^7.1.5",
+    "rate-limit-redis": "^4.1.0",
     "express-validator": "^7.0.1",
     "joi": "^17.11.0",
     "morgan": "^1.10.0",
@@ -58,7 +61,10 @@
     "uuid": "^9.0.1",
     "date-fns": "^3.0.6",
     "kafkajs": "^2.2.4",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "speakeasy": "^2.0.0",
+    "qrcode": "^1.5.3",
+    "ioredis": "^5.3.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -71,6 +77,8 @@
     "@types/multer": "^1.4.11",
     "@types/nodemailer": "^6.4.14",
     "@types/uuid": "^9.0.7",
+    "@types/speakeasy": "^2.0.10",
+    "@types/qrcode": "^1.5.5",
     "@typescript-eslint/eslint-plugin": "^6.16.0",
     "@typescript-eslint/parser": "^6.16.0",
     "typescript": "^5.3.3",

@@ -117,3 +117,11 @@ export class ResponseHandler {
     return this.error(res, message, 429, 'TOO_MANY_REQUESTS');
   }
 }
+
+// Convenience function for backward compatibility
+export const successResponse = <T>(
+  res: Response,
+  data: T,
+  message = 'Success',
+  statusCode = 200
+): Response => ResponseHandler.success(res, data, message, statusCode);
