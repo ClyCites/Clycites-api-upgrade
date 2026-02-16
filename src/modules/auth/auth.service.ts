@@ -8,8 +8,6 @@ import { OTPUtil } from '../../common/utils/otp';
 import EmailService from '../../common/utils/email';
 import { publishEvent } from '../../common/broker/kafka';
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
-import DeviceService from '../security/device.service';
-import SecurityEvent from '../security/securityEvent.model';
 import { AuditService } from '../audit';
 import {
   BadRequestError,
