@@ -78,6 +78,16 @@ ClyCites is a comprehensive digital agricultural e-market platform that connects
 - Unread count tracking
 - Notification preferences
 
+### 🌱 **Pest & Disease Detection** ⭐ NEW
+- AI-assisted image diagnosis for crop pests and diseases
+- Regional outbreak intelligence and geospatial analytics
+- Treatment recommendations (chemical, organic, biological)
+- Expert review workflow for quality assurance
+- Farmer feedback loop for model improvement
+- Multi-image upload with automatic analysis
+- Confidence scoring and severity assessment
+- **[→ View Full Documentation](./PEST_DISEASE_README.md)**
+
 ### 💡 Additional Features
 - Pagination support on all list endpoints
 - Comprehensive input validation
@@ -133,6 +143,21 @@ src/
 │   │   ├── notification.controller.ts
 │   │   ├── notification.validator.ts
 │   │   └── notification.routes.ts
+│   ├── pest-disease/          # 🌱 Pest & Disease Detection (NEW)
+│   │   ├── pestDisease.types.ts
+│   │   ├── models/
+│   │   │   ├── pestDiseaseReport.model.ts
+│   │   │   ├── regionalOutbreak.model.ts
+│   │   │   └── treatmentKnowledgeBase.model.ts
+│   │   ├── services/
+│   │   │   ├── pestDisease.service.ts
+│   │   │   ├── aiDetection.service.ts
+│   │   │   ├── imageStorage.service.ts
+│   │   │   └── outbreakAnalytics.service.ts
+│   │   ├── pestDisease.controller.ts
+│   │   ├── pestDisease.validator.ts
+│   │   ├── pestDisease.routes.ts
+│   │   └── index.ts
 │   └── analytics/             # Market intelligence
 │       ├── analytics.service.ts
 │       ├── analytics.controller.ts
@@ -342,42 +367,50 @@ module/
 - **Farm** - Farm details and location
 - **Product** - Product catalog
 - **Listing** - Marketplace listings
+- **Order** - Order management and tracking
+- **Notification** - Multi-channel notifications
+- **PestDiseaseReport** - 🌱 Crop health detection records
+- **RegionalOutbreak** - 🌱 Pest/disease outbreak tracking
+- **TreatmentKnowledgeBase** - 🌱 Treatment recommendations database
 - **OTP** - One-time passwords
 - **RefreshToken** - JWT refresh tokens
 
 ## 🌐 Integrations
 
 - **Email** - Nodemailer (SMTP)
-- **SMS** - Twilio
-- **Payments** - MTN MoMo, Airtel Money
-- **Weather** - OpenWeatherMap API
-- **AI/ML** - Custom service integration
+- **SMS** - Twilio (integration ready)
+- **Payments** - MTN MoMo, Airtel Money (integration ready)
+- **Weather** - OpenWeatherMap API (integration ready)
+- **AI/ML** - PlantVillage, Custom AI APIs, TensorFlow, PyTorch
+- **Cloud Storage** - AWS S3, Azure Blob, Google Cloud Storage
+- **Image Processing** - Sharp library for optimization
 
 ## 🚧 Roadmap
 
-### Phase 1 (Current)
+### Phase 1 (✅ Completed)
 - [x] Auth & User Management
-- [x] Farmer Profiles
-- [x] Product Management
-- [x] Basic Marketplace
+- [x] Farmer Profiles & Farm Management
+- [x] Product Catalog
+- [x] Marketplace & Listings
 
-### Phase 2
-- [ ] Order Management
-- [ ] Payment Integration
-- [ ] Logistics Module
-- [ ] Notifications
+### Phase 2 (✅ Completed)
+- [x] Order Management & Tracking
+- [x] Multi-channel Notifications
+- [x] Analytics & Market Intelligence
+- [x] 🌱 **Pest & Disease Detection Module**
 
-### Phase 3
-- [ ] AI Assistant
-- [ ] Market Analytics
-- [ ] Expert Portal
-- [ ] Admin Dashboard
+### Phase 3 (In Progress)
+- [ ] Payment Integration (MTN MoMo, Airtel Money)
+- [ ] Logistics & Delivery Tracking
+- [ ] Expert Portal & Advisory Services
+- [ ] Admin Dashboard & Reporting
 
-### Phase 4
-- [ ] GraphQL Gateway
+### Phase 4 (Planned)
+- [ ] GraphQL API Gateway
 - [ ] Microservices Architecture
-- [ ] Real-time Features
-- [ ] Mobile App APIs
+- [ ] Real-time Features (WebSockets)
+- [ ] Mobile App SDK
+- [ ] Blockchain for Supply Chain Traceability
 
 ## 🤝 Contributing
 
