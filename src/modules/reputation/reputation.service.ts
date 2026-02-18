@@ -84,7 +84,6 @@ export class ReputationService {
 
       await rating.save({ session });
 
-      // Update reputation score
       await this.updateReputationScore(ratedUserId.toString(), session);
 
       await session.commitTransaction();
