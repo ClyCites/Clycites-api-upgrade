@@ -155,7 +155,6 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     properties: {
       email: { type: 'string', format: 'email', example: 'amara@clycites.com' },
       password: { type: 'string', format: 'password', example: 'P@ssw0rd123' },
-      deviceId: { type: 'string', example: 'device-uuid-1234' },
     },
   },
 

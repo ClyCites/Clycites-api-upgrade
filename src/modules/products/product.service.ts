@@ -21,7 +21,7 @@ class ProductService {
 
   async getProducts(): Promise<IProduct[]> {
     const products = await Product.find().sort({ name: 1 }).populate('prices').lean();
-    return products as IProduct[];
+    return products as unknown as IProduct[];
   }
 
   async getProductById(productId: string): Promise<IProduct> {

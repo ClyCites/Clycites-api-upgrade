@@ -6,10 +6,12 @@ import { PasswordUtil } from '../../common/utils/password';
 import { TokenUtil } from '../../common/utils/token';
 import { OTPUtil } from '../../common/utils/otp';
 import EmailService from '../../common/utils/email';
+import logger from '../../common/utils/logger';
 import { publishEvent } from '../../common/broker/kafka';
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
 import { AuditService } from '../audit';
 import {
+  AppError,
   BadRequestError,
   UnauthorizedError,
   NotFoundError,
@@ -60,7 +62,8 @@ class AuthService {
       console.error('Failed to create personal workspace:', error);
     }
 
-    await publishEvent('users.registered', {
+    // Fire-and-forget — do not await; Kafka may not be available in all environments
+    publishEvent('users.registered', {
       eventId: uuidv4(),
       occurredAt: new Date().toISOString(),
       user: {
@@ -71,7 +74,7 @@ class AuthService {
         role: user.role,
         isEmailVerified: user.isEmailVerified,
       },
-    });
+    }).catch(() => { /* already logged inside publishEvent */ });
 
     // Generate OTP for email verification
     const otpCode = OTPUtil.generate();
@@ -83,8 +86,12 @@ class AuthService {
       expiresAt: OTPUtil.getExpiryDate(),
     });
 
-    // Send verification email
-    await EmailService.sendOTP(user.email, otpCode);
+    // Send verification email — non-fatal: registration succeeds even if email delivery fails
+    try {
+      await EmailService.sendOTP(user.email, otpCode);
+    } catch (emailError) {
+      logger.warn(`Verification email could not be sent to ${user.email}: ${emailError}`);
+    }
 
     // Generate tokens
     const tokens = TokenUtil.generateTokenPair({
@@ -260,8 +267,12 @@ class AuthService {
       user.isEmailVerified = true;
       await user.save();
 
-      // Send welcome email
-      await EmailService.sendWelcome(user.email, user.firstName);
+      // Send welcome email (non-fatal)
+      try {
+        await EmailService.sendWelcome(user.email, user.firstName);
+      } catch (emailError) {
+        logger.warn(`Welcome email could not be sent to ${user.email}: ${emailError}`);
+      }
     }
 
     return {
@@ -302,7 +313,12 @@ class AuthService {
     });
 
     // Send OTP
-    await EmailService.sendOTP(user.email, otpCode);
+    try {
+      await EmailService.sendOTP(user.email, otpCode);
+    } catch (emailError) {
+      logger.warn(`OTP email could not be sent to ${user.email}: ${emailError}`);
+      throw new AppError('Email service is temporarily unavailable. Please try again later.', 503, 'EMAIL_UNAVAILABLE');
+    }
   }
 
   async forgotPassword(email: string) {
@@ -323,8 +339,12 @@ class AuthService {
       expiresAt: OTPUtil.getExpiryDate(),
     });
 
-    // Send password reset email
-    await EmailService.sendOTP(user.email, otpCode);
+    // Send password reset email (non-fatal — don't reveal delivery status for security)
+    try {
+      await EmailService.sendOTP(user.email, otpCode);
+    } catch (emailError) {
+      logger.warn(`Password reset email could not be sent to ${user.email}: ${emailError}`);
+    }
   }
 
   async resetPassword(email: string, code: string, newPassword: string) {

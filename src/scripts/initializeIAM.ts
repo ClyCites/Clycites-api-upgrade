@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import PermissionService from '../modules/permissions/permission.service';
 import Role from '../modules/users/role.model';
 import Permission from '../modules/permissions/permission.model';
+import connectDB from '../common/config/database';
 
 /**
  * Comprehensive IAM System Initialization
@@ -298,3 +300,17 @@ async function createRoleIfNotExists(roleData: any) {
 }
 
 export { initializeIAMSystem };
+
+// ─── Entry point ─────────────────────────────────────────────────────────────
+connectDB()
+  .then(() => initializeIAMSystem())
+  .then(() => {
+    console.log('✅ Done.');
+    mongoose.disconnect();
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('❌ Fatal error:', err);
+    mongoose.disconnect();
+    process.exit(1);
+  });
