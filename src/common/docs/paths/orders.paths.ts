@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
@@ -6,7 +5,7 @@ const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 
-export const ordersPaths: OpenAPIV3_1.PathsObject = {
+export const ordersPaths: Record<string, unknown> = {
 
   '/api/v1/orders': {
     post: {
@@ -101,7 +100,7 @@ export const ordersPaths: OpenAPIV3_1.PathsObject = {
   },
 };
 
-export const disputesPaths: OpenAPIV3_1.PathsObject = {
+export const disputesPaths: Record<string, unknown> = {
 
   '/api/v1/disputes': {
     post: {

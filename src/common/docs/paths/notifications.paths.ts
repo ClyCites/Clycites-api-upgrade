@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
@@ -6,7 +5,7 @@ const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 
-export const notificationsPaths: OpenAPIV3_1.PathsObject = {
+export const notificationsPaths: Record<string, unknown> = {
 
   '/api/v1/notifications': {
     get: {
@@ -174,7 +173,7 @@ export const notificationsPaths: OpenAPIV3_1.PathsObject = {
   },
 };
 
-export const messagingPaths: OpenAPIV3_1.PathsObject = {
+export const messagingPaths: Record<string, unknown> = {
 
   '/api/v1/messaging/conversations': {
     get: {

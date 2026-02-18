@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
@@ -37,7 +36,7 @@ const marketBody = {
   },
 };
 
-export const marketsPaths: OpenAPIV3_1.PathsObject = {
+export const marketsPaths: Record<string, unknown> = {
 
   '/api/v1/markets': {
     post: {

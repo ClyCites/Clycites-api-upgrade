@@ -1,13 +1,12 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
-const ok = (description: string, dataSchema: OpenAPIV3_1.SchemaObject | OpenAPIV3_1.ReferenceObject) => ({
+const ok = (description: string, dataSchema: object | object) => ({
   200: { description, content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: dataSchema } }] } } } },
   400: { $ref: '#/components/responses/ValidationError' },
   401: { $ref: '#/components/responses/Unauthorized' },
   429: { $ref: '#/components/responses/TooManyRequests' },
 });
 
-export const authPaths: OpenAPIV3_1.PathsObject = {
+export const authPaths: Record<string, unknown> = {
 
   '/api/v1/auth/register': {
     post: {

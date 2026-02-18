@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
@@ -7,7 +6,7 @@ const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 const daysParam = { $ref: '#/components/parameters/daysParam' };
 
-export const analyticsPaths: OpenAPIV3_1.PathsObject = {
+export const analyticsPaths: Record<string, unknown> = {
 
   // ── Market Analytics (public) ───────────────────────────────────────────────
 

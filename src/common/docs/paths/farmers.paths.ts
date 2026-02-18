@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
@@ -11,7 +10,7 @@ const ok = (desc: string, data?: object) => ({
 const paged = (desc: string, itemRef: string) => ok(desc, { type: 'array', items: { $ref: itemRef } });
 const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 
-export const farmersPaths: OpenAPIV3_1.PathsObject = {
+export const farmersPaths: Record<string, unknown> = {
 
   // ── Enterprise Farmers ──────────────────────────────────────────────────────
 

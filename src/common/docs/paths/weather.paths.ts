@@ -1,11 +1,10 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 
-export const weatherPaths: OpenAPIV3_1.PathsObject = {
+export const weatherPaths: Record<string, unknown> = {
 
   '/api/v1/weather/forecast': {
     get: {

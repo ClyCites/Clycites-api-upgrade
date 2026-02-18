@@ -131,7 +131,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...expertPortalPaths,
     ...weatherPaths,
     ...mediaPaths,
-  },
+  } as OpenAPIV3_1.Document['paths'],
 
   components,
 };

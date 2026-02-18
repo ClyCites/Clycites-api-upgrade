@@ -1,9 +1,8 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
 
-export const priceMonitorPaths: OpenAPIV3_1.PathsObject = {
+export const priceMonitorPaths: Record<string, unknown> = {
 
   '/api/v1/pricing/predict': {
     post: {

@@ -1,10 +1,9 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
 const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 
-export const productsPaths: OpenAPIV3_1.PathsObject = {
+export const productsPaths: Record<string, unknown> = {
 
   '/api/v1/products': {
     get: {

@@ -1,4 +1,3 @@
-import type { OpenAPIV3_1 } from 'openapi-types';
 
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
@@ -6,7 +5,7 @@ const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 
-export const marketplacePaths: OpenAPIV3_1.PathsObject = {
+export const marketplacePaths: Record<string, unknown> = {
 
   '/api/v1/listings': {
     get: {
