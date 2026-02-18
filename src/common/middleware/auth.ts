@@ -208,4 +208,3 @@ export const detectSuspiciousActivity = async (
     next(error);
   }
 };
-
