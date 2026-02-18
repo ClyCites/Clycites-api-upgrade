@@ -40,6 +40,7 @@
   "author": "ClyCites Team",
   "license": "MIT",
   "dependencies": {
+    "@types/swagger-ui-express": "^4.1.8",
     "argon2": "^0.31.2",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
@@ -64,6 +65,7 @@
     "rate-limit-redis": "^4.1.0",
     "sharp": "^0.34.5",
     "speakeasy": "^2.0.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"
   },
