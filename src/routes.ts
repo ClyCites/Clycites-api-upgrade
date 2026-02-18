@@ -12,6 +12,7 @@ import marketRoutes from './modules/markets/market.routes';
 import priceRoutes from './modules/prices/price.routes';
 import pestDiseaseRoutes from './modules/pest-disease/pestDisease.routes';
 import expertPortalRoutes from './modules/expert-portal/expert.routes';
+import weatherRoutes from './modules/weather/weather.routes';
 
 const router = Router();
 
@@ -32,6 +33,7 @@ router.use(`${API_VERSION}/markets`, marketRoutes);
 router.use(`${API_VERSION}/prices`, priceRoutes);
 router.use(`${API_VERSION}/pest-disease`, pestDiseaseRoutes); // Pest & Disease Detection Module
 router.use(`${API_VERSION}/expert-portal`, expertPortalRoutes); // Expert Portal Module
+router.use(`${API_VERSION}/weather`, weatherRoutes); // Weather Detection, Forecasting & Alerts Module
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {
