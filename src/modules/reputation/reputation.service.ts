@@ -102,9 +102,6 @@ export class ReputationService {
     }
   }
 
-  /**
-   * Update reputation score for a user
-   */
   async updateReputationScore(
     userId: string,
     session?: mongoose.ClientSession
