@@ -68,7 +68,6 @@ export const authenticate = async (
       await device.save();
     } catch (deviceError) {
       console.error('Device tracking error:', deviceError);
-      // Don't fail auth if device tracking fails
     }
 
     next();
