@@ -94,4 +94,4 @@ const PriceAlertSchema = new Schema<IPriceAlert>(
 PriceAlertSchema.index({ user: 1, active: 1 });
 PriceAlertSchema.index({ product: 1, active: 1 });
 
-export default mongoose.model<IPriceAlert>('PriceAlert', PriceAlertSchema);
+export default mongoose.model<IPriceAlert>('MarketAlert', PriceAlertSchema);

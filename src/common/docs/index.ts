@@ -16,6 +16,13 @@ import { pestDiseasePaths } from './paths/pestDisease.paths';
 import { expertPortalPaths } from './paths/expertPortal.paths';
 import { weatherPaths } from './paths/weather.paths';
 import { mediaPaths } from './paths/media.paths';
+import { securityPaths } from './paths/security.paths';
+import { auditPaths } from './paths/audit.paths';
+import { paymentsPaths } from './paths/payments.paths';
+import { reputationPaths } from './paths/reputation.paths';
+import { marketIntelligencePaths } from './paths/marketIntelligence.paths';
+import { organizationsPaths } from './paths/organizations.paths';
+import { offersPaths } from './paths/offers.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -111,6 +118,10 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     { name: 'Expert Portal', description: 'Expert profiles, consultation cases, knowledge base, and advisories.' },
     { name: 'Weather', description: 'Weather forecasts, agri-weather summaries, and alert subscriptions.' },
     { name: 'Media', description: 'File upload, storage, and signed-URL delivery.' },
+    { name: 'Payments', description: 'Wallet, deposits, withdrawals, transactions, and escrow management.' },
+    { name: 'Reputation', description: 'User ratings, reputation scores, and trust tiers.' },
+    { name: 'Market Intelligence', description: 'AI-powered market insights, price recommendations, and intelligence alerts.' },
+    { name: 'Audit', description: 'Audit log access — user activity, org events, suspicious activities.' },
     { name: 'Admin', description: 'Platform administration operations (require elevated roles).' },
   ],
 
@@ -131,6 +142,13 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...expertPortalPaths,
     ...weatherPaths,
     ...mediaPaths,
+    ...securityPaths,
+    ...auditPaths,
+    ...paymentsPaths,
+    ...reputationPaths,
+    ...marketIntelligencePaths,
+    ...organizationsPaths,
+    ...offersPaths,
   } as OpenAPIV3_1.Document['paths'],
 
   components,

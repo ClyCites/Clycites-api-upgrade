@@ -16,6 +16,13 @@ import expertPortalRoutes from './modules/expert-portal/expert.routes';
 import weatherRoutes from './modules/weather/weather.routes';
 import mediaRoutes from './modules/media/media.routes';
 import disputeRoutes from './modules/orders/dispute.routes';
+import securityRoutes from './modules/security/security.routes';
+import auditRoutes from './modules/audit/audit.routes';
+import paymentRoutes from './modules/payments/payment.routes';
+import reputationRoutes from './modules/reputation/reputation.routes';
+import marketIntelligenceRoutes from './modules/market-intelligence/marketIntelligence.routes';
+import organizationRoutes from './modules/organizations/organization.routes';
+import offerRoutes from './modules/offers/offer.routes';
 
 const router = Router();
 
@@ -40,6 +47,13 @@ router.use(`${API_VERSION}/expert-portal`, expertPortalRoutes); // Expert Portal
 router.use(`${API_VERSION}/weather`, weatherRoutes); // Weather Detection, Forecasting & Alerts Module
 router.use(`${API_VERSION}/media`, mediaRoutes);       // Media & File Management Service
 router.use(`${API_VERSION}/disputes`, disputeRoutes); // Orders & Dispute Resolution Module
+router.use(`${API_VERSION}/security`, securityRoutes);            // Security — MFA & Device Management
+router.use(`${API_VERSION}/audit`, auditRoutes);                  // Audit Logs
+router.use(`${API_VERSION}/payments`, paymentRoutes);             // Payments, Wallet & Escrow
+router.use(`${API_VERSION}/reputation`, reputationRoutes);        // Reputation & Ratings
+router.use(`${API_VERSION}/market-intelligence`, marketIntelligenceRoutes); // Market Intelligence & Alerts
+router.use(`${API_VERSION}/organizations`, organizationRoutes);   // Organizations (Co-ops)
+router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace Offers & Negotiation
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {
