@@ -106,7 +106,6 @@ export class ReputationService {
     userId: string,
     session?: mongoose.ClientSession
   ): Promise<IReputationScore> {
-    // Get or create reputation score
     let reputation = await ReputationScore.findOne({ user: userId }).session(session || null);
     
     if (!reputation) {
@@ -116,7 +115,6 @@ export class ReputationService {
       });
     }
 
-    // Calculate rating statistics
     const ratings = await Rating.find({
       ratedUser: userId,
       status: 'approved',
