@@ -26,15 +26,13 @@ interface CreateRatingDTO {
 }
 
 export class ReputationService {
-  /**
-   * Create a rating for a completed order
-   */
+
   async createRating(userId: string, data: CreateRatingDTO): Promise<IRating> {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      // Validate order exists and is completed
+
       const order = await Order.findById(data.order).session(session);
       if (!order) {
         throw new AppError('Order not found', 404);
