@@ -10,6 +10,8 @@ import {
   orderIdValidator,
   orderQueryValidator,
 } from './order.validator';
+import { confirmDeliveryValidator } from './dispute.validator';
+import { confirmDelivery, getOrderTimeline } from './dispute.controller';
 
 const router = Router();
 
@@ -63,6 +65,21 @@ router.post(
   '/:id/cancel',
   validate(cancelOrderValidator),
   orderController.cancelOrder
+);
+
+// Buyer: confirm delivery and open dispute window
+router.post(
+  '/:id/confirm-delivery',
+  authorize('buyer'),
+  validate(confirmDeliveryValidator),
+  confirmDelivery
+);
+
+// Status timeline (immutable audit trail)
+router.get(
+  '/:id/timeline',
+  validate(orderIdValidator),
+  getOrderTimeline
 );
 
 export default router;

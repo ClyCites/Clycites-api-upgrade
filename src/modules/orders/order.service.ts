@@ -191,6 +191,13 @@ class OrderService {
       order.actualDeliveryDate = new Date();
     }
 
+    order.statusHistory.push({
+      status: status as any,
+      changedBy: new mongoose.Types.ObjectId(userId),
+      changedAt: new Date(),
+      note: `Status updated to ${status}`,
+    });
+
     await order.save();
 
     return order.populate(['buyer', 'farmer', 'listing', 'product']);
@@ -222,6 +229,12 @@ class OrderService {
     order.status = 'cancelled';
     order.cancellationReason = reason;
     order.cancelledBy = cancelledBy;
+    order.statusHistory.push({
+      status: 'cancelled' as any,
+      changedBy: new mongoose.Types.ObjectId(userId),
+      changedAt: new Date(),
+      note: `Cancelled by ${cancelledBy}: ${reason}`,
+    });
 
     // Restore listing quantity if payment not made
     if (order.paymentStatus !== 'paid') {
@@ -265,6 +278,65 @@ class OrderService {
     ]);
 
     return stats;
+  }
+
+  // ── Delivery confirmation ────────────────────────────────────────────────────
+
+  async confirmDelivery(
+    orderId:           string,
+    userId:            string,
+    quantityDelivered: number,
+    deliveryPhotos?:   string[]
+  ): Promise<IOrder> {
+    const order = await Order.findById(orderId);
+    if (!order) throw new NotFoundError('Order not found');
+
+    if (order.buyer.toString() !== userId) {
+      throw new BadRequestError('Only the buyer can confirm delivery');
+    }
+
+    if (order.status !== 'delivered') {
+      throw new BadRequestError(
+        `Cannot confirm delivery — current status is "${order.status}". The order must be in "delivered" state first.`
+      );
+    }
+
+    const now = new Date();
+    const disputeWindow = new Date(now.getTime() + 48 * 60 * 60 * 1000); // +48h
+
+    order.quantityDelivered        = quantityDelivered;
+    order.deliveryConfirmedAt      = now;
+    order.deliveryConfirmedBy      = new mongoose.Types.ObjectId(userId) as any;
+    order.disputeWindowExpiresAt   = disputeWindow;
+    if (deliveryPhotos?.length) {
+      order.deliveryPhotos = deliveryPhotos.map((id) => new mongoose.Types.ObjectId(id)) as any;
+    }
+
+    order.status = 'completed';
+    order.statusHistory.push({
+      status:    'completed' as any,
+      changedBy: new mongoose.Types.ObjectId(userId),
+      changedAt: now,
+      note:      `Delivery confirmed by buyer. Quantity received: ${quantityDelivered}. Dispute window closes at ${disputeWindow.toISOString()}`,
+    });
+
+    await order.save();
+    return order.populate(['buyer', 'farmer', 'listing', 'product']);
+  }
+
+  async getOrderTimeline(orderId: string, userId: string, userRole: string) {
+    const order = await Order.findById(orderId).select('statusHistory buyer farmer status');
+    if (!order) throw new NotFoundError('Order not found');
+
+    const isAdmin = ['admin', 'platform_admin'].includes(userRole);
+    if (!isAdmin && order.buyer.toString() !== userId) {
+      const farmerDoc = await mongoose.model('Farmer').findOne({ user: userId });
+      if (!farmerDoc || order.farmer.toString() !== farmerDoc._id.toString()) {
+        throw new BadRequestError('Access denied to this order timeline');
+      }
+    }
+
+    return order.statusHistory;
   }
 
   private calculateDeliveryFee(deliveryOption: string, _region: string): number {

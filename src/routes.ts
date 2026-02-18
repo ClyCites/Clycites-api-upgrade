@@ -14,6 +14,8 @@ import priceRoutes from './modules/prices/price.routes';
 import pestDiseaseRoutes from './modules/pest-disease/pestDisease.routes';
 import expertPortalRoutes from './modules/expert-portal/expert.routes';
 import weatherRoutes from './modules/weather/weather.routes';
+import mediaRoutes from './modules/media/media.routes';
+import disputeRoutes from './modules/orders/dispute.routes';
 
 const router = Router();
 
@@ -36,6 +38,8 @@ router.use(`${API_VERSION}/prices`, priceRoutes);
 router.use(`${API_VERSION}/pest-disease`, pestDiseaseRoutes); // Pest & Disease Detection Module
 router.use(`${API_VERSION}/expert-portal`, expertPortalRoutes); // Expert Portal Module
 router.use(`${API_VERSION}/weather`, weatherRoutes); // Weather Detection, Forecasting & Alerts Module
+router.use(`${API_VERSION}/media`, mediaRoutes);       // Media & File Management Service
+router.use(`${API_VERSION}/disputes`, disputeRoutes); // Orders & Dispute Resolution Module
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {

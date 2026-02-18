@@ -1,5 +1,13 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+// ── Status history entry (immutable audit trail) ──────────────────────────────
+export interface IOrderStatusEntry {
+  status:    string;
+  changedBy: mongoose.Types.ObjectId;
+  changedAt: Date;
+  note?:     string;
+}
+
 export interface IOrder extends Document {
   orderNumber: string;
   buyer: mongoose.Types.ObjectId;
@@ -14,6 +22,15 @@ export interface IOrder extends Document {
   finalAmount: number;
   status: 'pending' | 'confirmed' | 'processing' | 'in_transit' | 'delivered' | 'completed' | 'cancelled';
   paymentStatus: 'pending' | 'paid' | 'refunded' | 'failed';
+  // ── Enterprise additions ──────────────────────────────────────────────────
+  statusHistory:          IOrderStatusEntry[];
+  quantityDelivered?:     number;  // buyer-confirmed quantity
+  deliveryConfirmedAt?:   Date;
+  deliveryConfirmedBy?:   mongoose.Types.ObjectId;
+  disputeWindowExpiresAt?: Date;   // 48h window after delivery confirmation
+  disputeId?:             mongoose.Types.ObjectId;
+  deliveryPhotos?:        mongoose.Types.ObjectId[]; // MediaFile refs
+  // ─────────────────────────────────────────────────────────────────────────
   deliveryAddress: {
     region: string;
     district: string;
@@ -136,6 +153,24 @@ const orderSchema = new Schema<IOrder>(
       type: String,
       enum: ['buyer', 'farmer', 'admin'],
     },
+    // ── Enterprise audit / dispute fields ─────────────────────────────────────
+    statusHistory: {
+      type: [
+        {
+          status:    { type: String, required: true },
+          changedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+          changedAt: { type: Date, default: Date.now },
+          note:      String,
+        },
+      ],
+      default: [],
+    },
+    quantityDelivered:     { type: Number, min: 0 },
+    deliveryConfirmedAt:   Date,
+    deliveryConfirmedBy:   { type: Schema.Types.ObjectId, ref: 'User' },
+    disputeWindowExpiresAt: Date,
+    disputeId:             { type: Schema.Types.ObjectId, ref: 'Dispute' },
+    deliveryPhotos:        [{ type: Schema.Types.ObjectId, ref: 'MediaFile' }],
   },
   {
     timestamps: true,
