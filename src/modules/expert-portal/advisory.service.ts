@@ -24,8 +24,6 @@ import {
   InquiryStatus,
 } from './expert.types';
 
-// DTO Types ---------------------------------------------------------------
-
 interface CreateAdvisoryDTO {
   title: string;
   message: string;
