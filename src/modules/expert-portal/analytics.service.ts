@@ -19,7 +19,6 @@ import {
   PublicationStatus,
 } from './expert.types';
 
-// DTO Types ------------------------------------------------------------------
 
 interface DateRangeDTO {
   from: Date;

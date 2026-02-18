@@ -5,7 +5,6 @@ import { requirePermission } from '../../common/middleware/permission';
 
 const router = Router();
 
-// All routes require authentication
 router.use(authenticate);
 
 /**
