@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import Rating, { IRating } from './rating.model';
 import ReputationScore, { IReputationScore } from './reputation.model';
 import Order from '../orders/order.model';
+import User from '../users/user.model';
+import Offer from '../offers/offer.model';
 import { AppError } from '../../common/errors/AppError';
 import logger from '../../common/utils/logger';
 
@@ -90,8 +92,13 @@ export class ReputationService {
 
       logger.info(`Rating created for order ${data.order} by user ${userId}`);
 
-      // TODO: Send notification to rated user
-      // await notificationService.notifyNewRating(rating);
+      // Send notification to rated user
+      // Note: Implement when notification service is available
+      // await notificationService.notifyNewRating(ratedUserId.toString(), {
+      //   ratingId: rating._id,
+      //   raterName: req.user.name,
+      //   overallRating: rating.overallRating,
+      // });
 
       return rating.populate(['ratedUser', 'ratedBy']);
     } catch (error) {
@@ -109,9 +116,13 @@ export class ReputationService {
     let reputation = await ReputationScore.findOne({ user: userId }).session(session || null);
     
     if (!reputation) {
+      // Get user type from user profile
+      const user = await User.findById(userId).select('role').session(session || null);
+      const userType = user?.role === 'farmer' || user?.role === 'trader' ? 'farmer' : 'buyer';
+      
       reputation = new ReputationScore({
         user: userId,
-        userType: 'farmer', // TODO: Get from user profile
+        userType,
       });
     }
 
@@ -184,11 +195,11 @@ export class ReputationService {
     ).length;
 
     // Calculate behavioral metrics
-    // TODO: Implement these based on offer and order data
-    reputation.behavior.responseRate = 85; // Placeholder
-    reputation.behavior.onTimeDeliveryRate = 90; // Placeholder
-    reputation.behavior.qualityComplaintRate = 5; // Placeholder
-    reputation.behavior.activityScore = 75; // Placeholder
+    const behaviorMetrics = await this.calculateBehaviorMetrics(userId, allOrders, ratings, session);
+    reputation.behavior.responseRate = behaviorMetrics.responseRate;
+    reputation.behavior.onTimeDeliveryRate = behaviorMetrics.onTimeDeliveryRate;
+    reputation.behavior.qualityComplaintRate = behaviorMetrics.qualityComplaintRate;
+    reputation.behavior.activityScore = behaviorMetrics.activityScore;
 
     // Calculate account age
     const createdAt = reputation.createdAt || new Date();
@@ -224,6 +235,97 @@ export class ReputationService {
     logger.info(`Reputation score updated for user ${userId}: ${reputation.overallScore}`);
 
     return reputation;
+  }
+
+  /**
+   * Calculate behavioral metrics based on offers and orders
+   */
+  private async calculateBehaviorMetrics(
+    userId: string,
+    orders: Array<{ 
+      status: string; 
+      estimatedDeliveryDate?: Date; 
+      actualDeliveryDate?: Date;
+      farmer: mongoose.Types.ObjectId;
+      createdAt: Date;
+    }>,
+    ratings: IRating[],
+    session?: mongoose.ClientSession
+  ): Promise<{
+    responseRate: number;
+    onTimeDeliveryRate: number;
+    qualityComplaintRate: number;
+    activityScore: number;
+  }> {
+    // Calculate response rate from offers
+    const userOffers = await Offer.find({
+      $or: [{ buyer: userId }, { seller: userId }],
+    })
+      .select('responseTime respondedAt createdAt')
+      .session(session || null);
+
+    let responseRate = 0;
+    if (userOffers.length > 0) {
+      const respondedOffers = userOffers.filter((o) => o.respondedAt);
+      responseRate = (respondedOffers.length / userOffers.length) * 100;
+      
+      // Bonus for fast response times (< 24 hours)
+      const fastResponses = respondedOffers.filter((o) => 
+        o.responseTime && o.responseTime < 24 * 60 * 60 * 1000
+      ).length;
+      if (respondedOffers.length > 0) {
+        const fastResponseBonus = (fastResponses / respondedOffers.length) * 10;
+        responseRate = Math.min(100, responseRate + fastResponseBonus);
+      }
+    }
+
+    // Calculate on-time delivery rate
+    const deliveredOrders = orders.filter((o) => 
+      o.status === 'delivered' || o.status === 'completed'
+    );
+    let onTimeDeliveryRate = 0;
+    if (deliveredOrders.length > 0) {
+      const onTimeDeliveries = deliveredOrders.filter((o) => {
+        if (!o.estimatedDeliveryDate || !o.actualDeliveryDate) return false;
+        return o.actualDeliveryDate <= o.estimatedDeliveryDate;
+      }).length;
+      onTimeDeliveryRate = (onTimeDeliveries / deliveredOrders.length) * 100;
+    }
+
+    // Calculate quality complaint rate from ratings
+    let qualityComplaintRate = 0;
+    if (ratings.length > 0) {
+      const lowQualityRatings = ratings.filter((r) => {
+        const productQuality = r.categoryRatings?.productQuality;
+        return productQuality && productQuality < 3; // Rating below 3 is a complaint
+      }).length;
+      qualityComplaintRate = (lowQualityRatings / ratings.length) * 100;
+    }
+
+    // Calculate activity score
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const recentOrders = orders.filter((o) => o.createdAt >= thirtyDaysAgo).length;
+    const recentOffers = userOffers.filter((o) => o.createdAt >= thirtyDaysAgo).length;
+    const recentRatings = ratings.filter((r) => r.createdAt >= ninetyDaysAgo).length;
+
+    // Activity score components:
+    // - Recent orders (0-40 points)
+    // - Recent offers (0-30 points)
+    // - Recent ratings (0-30 points)
+    const orderScore = Math.min(40, recentOrders * 4);
+    const offerScore = Math.min(30, recentOffers * 3);
+    const ratingScore = Math.min(30, recentRatings * 5);
+    const activityScore = orderScore + offerScore + ratingScore;
+
+    return {
+      responseRate: Math.round(responseRate * 10) / 10,
+      onTimeDeliveryRate: Math.round(onTimeDeliveryRate * 10) / 10,
+      qualityComplaintRate: Math.round(qualityComplaintRate * 10) / 10,
+      activityScore: Math.round(activityScore),
+    };
   }
 
   /**
