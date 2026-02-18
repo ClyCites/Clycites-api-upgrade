@@ -3,17 +3,45 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
 import config from './common/config';
 import connectDB from './common/config/database';
 import logger from './common/utils/logger';
 import { errorHandler, notFoundHandler } from './common/middleware/errorHandler';
 import { apiLimiter } from './common/middleware/rateLimiter';
 import routes from './routes';
+import { openApiSpec } from './common/docs';
 
 const app: Application = express();
 
 // Connect to database
 connectDB();
+
+// ─── Swagger UI (mounted before helmet so its inline assets are not blocked) ───
+app.use(
+  '/api/docs',
+  swaggerUi.serve,
+  swaggerUi.setup(openApiSpec, {
+    swaggerOptions: {
+      persistAuthorization: true,
+      docExpansion: 'none',
+      filter: true,
+      displayRequestDuration: true,
+    },
+    customSiteTitle: 'ClyCites API Docs',
+    customCss: `
+      .swagger-ui .topbar { background-color: #1a7f4b; }
+      .swagger-ui .topbar .download-url-wrapper { display: none; }
+      .swagger-ui .info .title { color: #1a7f4b; }
+    `,
+  }),
+);
+
+// Also expose the raw JSON spec at /api/docs.json
+app.get('/api/docs.json', (_req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(openApiSpec);
+});
 
 // Middleware
 app.use(helmet()); // Security headers
