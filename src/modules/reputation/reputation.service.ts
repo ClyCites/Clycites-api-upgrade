@@ -42,7 +42,6 @@ export class ReputationService {
         throw new AppError('Can only rate completed orders', 400);
       }
 
-      // Determine rater role and rated user
       let raterRole: 'buyer' | 'seller';
       let ratedUserId: mongoose.Types.ObjectId;
 
@@ -56,7 +55,6 @@ export class ReputationService {
         throw new AppError('You are not part of this order', 403);
       }
 
-      // Check if already rated
       const existingRating = await Rating.findOne({
         order: data.order,
         ratedBy: userId,
@@ -67,7 +65,6 @@ export class ReputationService {
         throw new AppError('You have already rated this order', 400);
       }
 
-      // Create rating
       const rating = new Rating({
         order: data.order,
         ratedUser: ratedUserId,
