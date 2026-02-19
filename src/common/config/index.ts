@@ -77,6 +77,7 @@ interface Config {
     serviceUrl: string;
   };
   kafka: {
+    enabled: boolean;
     brokers: string[];
     clientId: string;
     groupId: string;
@@ -171,6 +172,7 @@ const config: Config = {
     serviceUrl: process.env.PRICE_MONITOR_URL || `http://localhost:${process.env.PRICE_MONITOR_PORT || '5010'}`,
   },
   kafka: {
+    enabled: process.env.KAFKA_ENABLED === 'true',
     brokers: process.env.KAFKA_BROKERS?.split(',') || ['localhost:9092'],
     clientId: process.env.KAFKA_CLIENT_ID || 'clycites-api',
     groupId: process.env.KAFKA_GROUP_ID || 'clycites-services',

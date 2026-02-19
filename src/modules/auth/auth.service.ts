@@ -1,5 +1,4 @@
 import User from '../users/user.model';
-import { v4 as uuidv4 } from 'uuid';
 import OTP from './otp.model';
 import RefreshToken from './refreshToken.model';
 import { PasswordUtil } from '../../common/utils/password';
@@ -7,7 +6,8 @@ import { TokenUtil } from '../../common/utils/token';
 import { OTPUtil } from '../../common/utils/otp';
 import EmailService from '../../common/utils/email';
 import logger from '../../common/utils/logger';
-import { publishEvent } from '../../common/broker/kafka';
+import notificationService from '../notifications/notification.service';
+import { NotificationType, NotificationChannel, NotificationPriority } from '../notifications/notification.types';
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
 import { AuditService } from '../audit';
 import {
@@ -62,19 +62,16 @@ class AuthService {
       console.error('Failed to create personal workspace:', error);
     }
 
-    // Fire-and-forget — do not await; Kafka may not be available in all environments
-    publishEvent('users.registered', {
-      eventId: uuidv4(),
-      occurredAt: new Date().toISOString(),
-      user: {
-        id: user._id.toString(),
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        isEmailVerified: user.isEmailVerified,
-      },
-    }).catch(() => { /* already logged inside publishEvent */ });
+    // Fire-and-forget — send a welcome in-app notification; non-fatal
+    notificationService.createNotification({
+      user:     user._id.toString(),
+      type:     NotificationType.SYSTEM_ANNOUNCEMENT,
+      title:    'Welcome to ClyCites!',
+      message:  `Hi ${user.firstName}, your account has been created. Please verify your email to get started.`,
+      priority: NotificationPriority.MEDIUM,
+      channels: [NotificationChannel.IN_APP],
+      sourceService: 'auth',
+    }).catch(err => logger.warn(`[AuthService] Welcome notification failed: ${err}`));
 
     // Generate OTP for email verification
     const otpCode = OTPUtil.generate();
@@ -273,6 +270,17 @@ class AuthService {
       } catch (emailError) {
         logger.warn(`Welcome email could not be sent to ${user.email}: ${emailError}`);
       }
+
+      // In-app account-verified notification (fire-and-forget)
+      notificationService.createNotification({
+        user:     user._id.toString(),
+        type:     NotificationType.ACCOUNT_VERIFIED,
+        title:    'Email Verified',
+        message:  'Your email address has been successfully verified. You now have full access to ClyCites.',
+        priority: NotificationPriority.MEDIUM,
+        channels: [NotificationChannel.IN_APP],
+        sourceService: 'auth',
+      }).catch(err => logger.warn(`[AuthService] Account-verified notification failed: ${err}`));
     }
 
     return {
@@ -386,6 +394,17 @@ class AuthService {
       { user: user._id, isRevoked: false },
       { isRevoked: true }
     );
+
+    // Notify user of password change (fire-and-forget)
+    notificationService.createNotification({
+      user:     user._id.toString(),
+      type:     NotificationType.PASSWORD_CHANGED,
+      title:    'Password Changed',
+      message:  'Your password has been successfully reset. If you did not do this, please contact support immediately.',
+      priority: NotificationPriority.HIGH,
+      channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+      sourceService: 'auth',
+    }).catch(err => logger.warn(`[AuthService] Password-changed notification failed: ${err}`));
   }
 
   async getUserById(userId: string) {
