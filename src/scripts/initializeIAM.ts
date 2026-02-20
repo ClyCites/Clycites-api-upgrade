@@ -1,6 +1,7 @@
+/* eslint-disable no-console */
 import mongoose from 'mongoose';
 import PermissionService from '../modules/permissions/permission.service';
-import Role from '../modules/users/role.model';
+import Role, { IRole } from '../modules/users/role.model';
 import Permission from '../modules/permissions/permission.model';
 import connectDB from '../common/config/database';
 
@@ -96,7 +97,7 @@ async function createDefaultRoles() {
     level: 100,
     isSystem: true,
     isDefault: true,
-    permissions: farmerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: farmerPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Buyer (Individual/Organization Buyer)
@@ -118,7 +119,7 @@ async function createDefaultRoles() {
     level: 100,
     isSystem: true,
     isDefault: false,
-    permissions: buyerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: buyerPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Trader
@@ -144,7 +145,7 @@ async function createDefaultRoles() {
     level: 100,
     isSystem: true,
     isDefault: false,
-    permissions: traderPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: traderPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Expert (Agricultural Advisor)
@@ -164,7 +165,7 @@ async function createDefaultRoles() {
     level: 50,
     isSystem: true,
     isDefault: false,
-    permissions: expertPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: expertPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // ============================================
@@ -212,7 +213,7 @@ async function createDefaultRoles() {
     level: 10,
     isSystem: true,
     isDefault: false,
-    permissions: orgAdminPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: orgAdminPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Manager
@@ -240,7 +241,7 @@ async function createDefaultRoles() {
     level: 50,
     isSystem: true,
     isDefault: false,
-    permissions: managerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: managerPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Member (Default role)
@@ -262,7 +263,7 @@ async function createDefaultRoles() {
     level: 100,
     isSystem: true,
     isDefault: true,
-    permissions: memberPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: memberPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 
   // Viewer (Read-only)
@@ -281,14 +282,19 @@ async function createDefaultRoles() {
     level: 150,
     isSystem: true,
     isDefault: false,
-    permissions: viewerPermissions.map(name => permissionMap.get(name)).filter(Boolean),
+    permissions: viewerPermissions.map(name => permissionMap.get(name)).filter(Boolean) as mongoose.Types.ObjectId[],
   });
 }
 
 /**
  * Create role if it doesn't exist
  */
-async function createRoleIfNotExists(roleData: any) {
+async function createRoleIfNotExists(roleData: Omit<Partial<IRole>, 'permissions'> & {
+  slug: string;
+  name: string;
+  scope: string;
+  permissions?: mongoose.Types.ObjectId[];
+}) {
   const existing = await Role.findOne({ slug: roleData.slug, scope: roleData.scope });
   
   if (!existing) {
@@ -301,16 +307,18 @@ async function createRoleIfNotExists(roleData: any) {
 
 export { initializeIAMSystem };
 
-// ─── Entry point ─────────────────────────────────────────────────────────────
-connectDB()
-  .then(() => initializeIAMSystem())
-  .then(() => {
-    console.log('✅ Done.');
-    mongoose.disconnect();
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error('❌ Fatal error:', err);
-    mongoose.disconnect();
-    process.exit(1);
-  });
+// ─── Entry point (only when run directly: npm run init:iam) ──────────────────
+if (require.main === module) {
+  connectDB()
+    .then(() => initializeIAMSystem())
+    .then(() => {
+      console.log('✅ Done.');
+      mongoose.disconnect();
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('❌ Fatal error:', err);
+      mongoose.disconnect();
+      process.exit(1);
+    });
+}

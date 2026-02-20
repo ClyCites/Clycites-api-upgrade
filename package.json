@@ -26,6 +26,7 @@
     "start:price-monitor": "python flask-app/app.py",
     "start:all": "concurrently -n auth,farmers,products,marketplace,orders,notifications,analytics,price-monitor -c blue,green,magenta,cyan,yellow,gray,white,red \"npm:start:auth\" \"npm:start:farmers\" \"npm:start:products\" \"npm:start:marketplace\" \"npm:start:orders\" \"npm:start:notifications\" \"npm:start:analytics\" \"npm:start:price-monitor\"",
     "init:iam": "ts-node src/scripts/initializeIAM.ts",
+    "seed": "ts-node src/scripts/seed.ts",
     "test": "jest",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix"
