@@ -313,7 +313,7 @@ const PRODUCTS = [
   { name: 'Sweet Potatoes',      category: 'Root Crops',  variety: 'NASPOT 10',   unit: 'kg'  as const, description: 'Orange-flesh sweet potatoes, vitamin A rich.' },
   { name: 'Cassava (Fresh)',     category: 'Root Crops',  variety: 'Nase 14',     unit: 'kg'  as const, description: 'Fresh cassava roots, harvested at maturity.' },
   { name: 'Irish Potatoes',      category: 'Root Crops',  variety: 'Victoria',    unit: 'kg'  as const, description: 'Ware potatoes for market and processing.' },
-  { name: 'Banana (Matooke)',    category: 'Fruits',      variety: 'Mbidde',      unit: 'bunch' as const, description: 'Cooking banana, staple food in Uganda.' },
+  { name: 'Banana (Matooke)',    category: 'Fruits',      variety: 'Mbidde',      unit: 'bag'   as const, description: 'Cooking banana, staple food in Uganda. Sold per bag/bunch.' },
   { name: 'Tomatoes',            category: 'Vegetables',  variety: 'Tengeru 97',  unit: 'kg'  as const, description: 'Fresh tomatoes for market.' },
   { name: 'Onions',              category: 'Vegetables',  variety: 'Red Creole',  unit: 'kg'  as const, description: 'Dry onions for cooking.' },
   { name: 'Cabbage',             category: 'Vegetables',  variety: 'Prize Drum',  unit: 'kg'  as const, description: 'Fresh cabbage heads.' },
