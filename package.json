@@ -16,6 +16,7 @@
     "dev:all": "concurrently -n auth,farmers,products,marketplace,orders,notifications,analytics,price-monitor -c blue,green,magenta,cyan,yellow,gray,white,red \"npm:dev:auth\" \"npm:dev:farmers\" \"npm:dev:products\" \"npm:dev:marketplace\" \"npm:dev:orders\" \"npm:dev:notifications\" \"npm:dev:analytics\" \"npm:dev:price-monitor\"",
     "build": "tsc",
     "start": "node dist/app.js",
+    "start:prod": "node ts-node src/app.ts",
     "start:auth": "node dist/services/auth/app.js",
     "start:farmers": "node dist/services/farmers/app.js",
     "start:products": "node dist/services/products/app.js",
