@@ -171,6 +171,39 @@ export const notificationsPaths: Record<string, unknown> = {
       responses: { 200: { description: 'Retry queued.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
+
+  '/api/v1/notifications/admin/expire-old': {
+    post: {
+      tags: ['Notifications', 'Admin'],
+      summary: 'Expire old notifications',
+      description: 'Marks old unread notifications as expired. `platform_admin` only.',
+      operationId: 'expireOldNotifications',
+      security: auth,
+      responses: { 200: { description: 'Expiry job queued.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/notifications/templates/seed': {
+    post: {
+      tags: ['Notifications', 'Admin'],
+      summary: 'Seed notification templates',
+      description: 'Seeds the default notification template set. `platform_admin` only.',
+      operationId: 'seedNotificationTemplates',
+      security: auth,
+      responses: { 200: { description: 'Templates seeded.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/notifications/preferences/reset': {
+    post: {
+      tags: ['Notifications'],
+      summary: 'Reset notification preferences to defaults',
+      description: 'Resets the authenticated user\'s notification preferences to the platform defaults.',
+      operationId: 'resetNotificationPreferences',
+      security: auth,
+      responses: { 200: { description: 'Preferences reset.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
 };
 
 export const messagingPaths: Record<string, unknown> = {

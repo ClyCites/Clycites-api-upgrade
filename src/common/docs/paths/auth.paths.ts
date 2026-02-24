@@ -62,13 +62,25 @@ export const authPaths: Record<string, unknown> = {
     },
   },
 
-  '/api/v1/auth/verify-email': {
+  '/api/v1/auth/verify-otp': {
     post: {
       tags: ['Authentication'],
-      summary: 'Verify email address',
-      operationId: 'authVerifyEmail',
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['token'], properties: { token: { type: 'string' } } } } } },
-      responses: { 200: { description: 'Email verified.' }, 400: { $ref: '#/components/responses/ValidationError' } },
+      summary: 'Verify OTP code',
+      description: 'Verifies the OTP sent to the user\'s email after registration.',
+      operationId: 'authVerifyOTP',
+      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'otp'], properties: { email: { type: 'string', format: 'email' }, otp: { type: 'string', minLength: 6, maxLength: 6, example: '123456' } } } } } },
+      responses: { 200: { description: 'OTP verified successfully.' }, 400: { $ref: '#/components/responses/ValidationError' }, 429: { $ref: '#/components/responses/TooManyRequests' } },
+    },
+  },
+
+  '/api/v1/auth/resend-otp': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'Resend OTP code',
+      description: 'Resends the verification OTP to the user\'s registered email address.',
+      operationId: 'authResendOTP',
+      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string', format: 'email' } } } } } },
+      responses: { 200: { description: 'OTP resent.' }, 400: { $ref: '#/components/responses/ValidationError' }, 429: { $ref: '#/components/responses/TooManyRequests' } },
     },
   },
 
@@ -93,17 +105,6 @@ export const authPaths: Record<string, unknown> = {
     },
   },
 
-  '/api/v1/auth/change-password': {
-    post: {
-      tags: ['Authentication'],
-      summary: 'Change password (authenticated)',
-      operationId: 'authChangePassword',
-      security: [{ BearerAuth: [] }],
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['currentPassword', 'newPassword'], properties: { currentPassword: { type: 'string', format: 'password' }, newPassword: { type: 'string', format: 'password', minLength: 8 } } } } } },
-      responses: { 200: { description: 'Password changed.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
-    },
-  },
-
   '/api/v1/auth/me': {
     get: {
       tags: ['Authentication'],
@@ -111,31 +112,6 @@ export const authPaths: Record<string, unknown> = {
       operationId: 'authMe',
       security: [{ BearerAuth: [] }],
       responses: { ...ok('Current user.', { $ref: '#/components/schemas/User' }), 401: { $ref: '#/components/responses/Unauthorized' } },
-    },
-  },
-
-  '/api/v1/auth/setup-mfa': {
-    post: {
-      tags: ['Authentication', 'Security'],
-      summary: 'Set up multi-factor authentication',
-      description: 'Returns a TOTP secret and QR code URI to register with an authenticator app.',
-      operationId: 'authSetupMFA',
-      security: [{ BearerAuth: [] }],
-      responses: {
-        200: { description: 'MFA setup data.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'object', properties: { secret: { type: 'string' }, qrCodeUrl: { type: 'string' } } } } }] } } } },
-        401: { $ref: '#/components/responses/Unauthorized' },
-      },
-    },
-  },
-
-  '/api/v1/auth/verify-mfa': {
-    post: {
-      tags: ['Authentication', 'Security'],
-      summary: 'Verify MFA token',
-      operationId: 'authVerifyMFA',
-      security: [{ BearerAuth: [] }],
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['token'], properties: { token: { type: 'string', minLength: 6, maxLength: 6, example: '123456' } } } } } },
-      responses: { 200: { description: 'MFA verified.' }, 400: { description: 'Invalid or expired TOTP token.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 };

@@ -1,214 +1,336 @@
-
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
+const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
+const profileIdParam = { name: 'profileId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } };
 
 export const weatherPaths: Record<string, unknown> = {
 
-  '/api/v1/weather/forecast': {
-    get: {
+  // ── Farm Weather Profiles ─────────────────────────────────────────────────────
+
+  '/api/v1/weather/profiles': {
+    post: {
       tags: ['Weather'],
-      summary: 'Get weather forecast',
-      description: 'Returns current conditions plus N-day forecast for a location.',
-      operationId: 'getWeatherForecast',
-      parameters: [
-        { name: 'lat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 }, example: 0.3476 },
-        { name: 'lng', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 }, example: 32.5825 },
-        { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 14, default: 7 }, description: 'Forecast horizon in days.' },
-        { name: 'units', in: 'query', schema: { type: 'string', enum: ['metric', 'imperial'], default: 'metric' } },
-      ],
-      responses: {
-        200: {
-          description: 'Forecast data.',
-          content: {
-            'application/json': {
-              schema: {
-                allOf: [
-                  { $ref: '#/components/schemas/SuccessResponse' },
-                  {
-                    type: 'object',
-                    properties: {
-                      data: {
-                        type: 'object',
-                        properties: {
-                          current: {
-                            type: 'object',
-                            properties: {
-                              temperature: { type: 'number' },
-                              humidity: { type: 'number' },
-                              rainfall: { type: 'number' },
-                              windSpeed: { type: 'number' },
-                              uvIndex: { type: 'number' },
-                              description: { type: 'string' },
-                              icon: { type: 'string' },
-                            },
-                          },
-                          daily: {
-                            type: 'array',
-                            items: {
-                              type: 'object',
-                              properties: {
-                                date: { type: 'string', format: 'date' },
-                                tempHigh: { type: 'number' },
-                                tempLow: { type: 'number' },
-                                rainfall: { type: 'number' },
-                                humidity: { type: 'number' },
-                                description: { type: 'string' },
-                                agriAdvisory: { type: 'string', description: 'AI-generated farming advisory for the day.' },
-                              },
-                            },
-                          },
-                          soilTemperature: { type: 'number' },
-                          evapotranspiration: { type: 'number', description: 'mm/day — useful for irrigation planning.' },
-                        },
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        },
-        400: { $ref: '#/components/responses/ValidationError' },
-      },
+      summary: 'Create weather profile for a farm',
+      operationId: 'createWeatherProfile',
+      security: auth,
+      requestBody: r({ type: 'object', required: ['farmId', 'name', 'location'], properties: { farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, name: { type: 'string' }, location: { type: 'object', required: ['latitude', 'longitude'], properties: { latitude: { type: 'number' }, longitude: { type: 'number' }, altitude: { type: 'number' } } }, timezone: { type: 'string', example: 'Africa/Kampala' }, cropTypes: { type: 'array', items: { type: 'string' } } } }),
+      responses: { 201: { description: 'Weather profile created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
-  '/api/v1/weather/alerts': {
+  '/api/v1/weather/profiles/me': {
     get: {
       tags: ['Weather'],
-      summary: 'List weather alerts',
-      description: 'Returns active weather alerts (storms, drought, frost, flood) for a region.',
-      operationId: 'getWeatherAlerts',
-      parameters: [
-        pageParam, limitParam,
-        { name: 'region', in: 'query', schema: { type: 'string' } },
-        { name: 'country', in: 'query', schema: { type: 'string' } },
-        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['advisory', 'watch', 'warning', 'emergency'] } },
-        { name: 'alertType', in: 'query', schema: { type: 'string', enum: ['drought', 'flood', 'storm', 'frost', 'heatwave', 'locusts', 'general'] } },
-        { name: 'activeOnly', in: 'query', schema: { type: 'boolean', default: true } },
-      ],
-      responses: {
-        200: {
-          description: 'Alert list.',
-          content: {
-            'application/json': {
-              schema: {
-                allOf: [
-                  { $ref: '#/components/schemas/SuccessResponse' },
-                  { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/WeatherAlert' } }, meta: { $ref: '#/components/schemas/PaginationMeta' } } },
-                ],
-              },
-            },
-          },
-        },
-      },
-    },
-    post: {
-      tags: ['Weather', 'Admin'],
-      summary: 'Create weather alert',
-      description: 'Requires `platform_admin` or meteorologist role.',
-      operationId: 'createWeatherAlert',
+      summary: 'List my weather profiles',
+      operationId: 'getMyWeatherProfiles',
       security: auth,
-      requestBody: r({
-        type: 'object',
-        required: ['title', 'alertType', 'severity', 'regions', 'startsAt', 'endsAt'],
-        properties: {
-          title: { type: 'string' },
-          description: { type: 'string' },
-          alertType: { type: 'string', enum: ['drought', 'flood', 'storm', 'frost', 'heatwave', 'locusts', 'general'] },
-          severity: { type: 'string', enum: ['advisory', 'watch', 'warning', 'emergency'] },
-          regions: { type: 'array', items: { type: 'string' }, minItems: 1 },
-          countries: { type: 'array', items: { type: 'string' } },
-          startsAt: { type: 'string', format: 'date-time' },
-          endsAt: { type: 'string', format: 'date-time' },
-          actionable: { type: 'string', description: 'Recommended actions for farmers.' },
-          affectedCrops: { type: 'array', items: { type: 'string' } },
-        },
-      }),
-      responses: { 201: { description: 'Alert created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      parameters: [pageParam, limitParam],
+      responses: { 200: { description: 'My profiles.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{id}': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get weather profile by ID',
+      operationId: 'getWeatherProfile',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Profile details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Weather'],
+      summary: 'Update weather profile',
+      operationId: 'updateWeatherProfile',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, cropTypes: { type: 'array', items: { type: 'string' } }, timezone: { type: 'string' } } }),
+      responses: { 200: { description: 'Updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+    delete: {
+      tags: ['Weather'],
+      summary: 'Delete weather profile',
+      operationId: 'deleteWeatherProfile',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Deleted (soft).' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  // ── Conditions / Snapshots ────────────────────────────────────────────────────
+
+  '/api/v1/weather/profiles/{profileId}/conditions': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get current conditions for a farm profile',
+      operationId: 'getCurrentConditions',
+      security: auth,
+      parameters: [profileIdParam],
+      responses: { 200: { description: 'Latest weather snapshot.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/conditions/history': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get conditions history for a farm profile',
+      operationId: 'getConditionsHistory',
+      security: auth,
+      parameters: [profileIdParam, pageParam, limitParam, { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } }, { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }],
+      responses: { 200: { description: 'Paginated snapshot history.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  // ── Forecasts ─────────────────────────────────────────────────────────────────
+
+  '/api/v1/weather/profiles/{profileId}/forecast': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get latest forecast for a farm profile',
+      operationId: 'getLatestForecast',
+      security: auth,
+      parameters: [profileIdParam, { name: 'horizon', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'weekly'] } }],
+      responses: { 200: { description: 'Forecast data.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/forecast/summary': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get forecast summary (today / tomorrow / week)',
+      operationId: 'getForecastSummary',
+      security: auth,
+      parameters: [profileIdParam],
+      responses: { 200: { description: 'Summary forecast.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/forecast/risk': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get agricultural risk forecast breakdown',
+      operationId: 'getRiskForecast',
+      security: auth,
+      parameters: [profileIdParam, { name: 'horizon', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'weekly'] } }],
+      responses: { 200: { description: 'Risk breakdown by type (drought, frost, flood, pest).' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/forecast/accuracy': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Compare forecast accuracy vs actuals',
+      operationId: 'compareForecastVsActual',
+      security: auth,
+      parameters: [profileIdParam, { name: 'date', in: 'query', schema: { type: 'string', format: 'date' } }],
+      responses: { 200: { description: 'Forecast accuracy metrics.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/dashboard': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Combined weather dashboard for a farm',
+      description: 'Returns current conditions, latest forecast, active alerts, and risk scores in a single call.',
+      operationId: 'getWeatherDashboard',
+      security: auth,
+      parameters: [profileIdParam],
+      responses: { 200: { description: 'Dashboard data.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  // ── Alerts ────────────────────────────────────────────────────────────────────
+
+  '/api/v1/weather/profiles/{profileId}/alerts': {
+    get: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'List alerts for a farm profile',
+      operationId: 'listFarmAlerts',
+      security: auth,
+      parameters: [profileIdParam, pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'acknowledged', 'dismissed', 'expired'] } }, { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } }],
+      responses: { 200: { description: 'Farm alerts.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/alerts/stats': {
+    get: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'Alert statistics by severity and type',
+      operationId: 'getAlertStats',
+      security: auth,
+      responses: { 200: { description: 'Alert counts.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
   '/api/v1/weather/alerts/{id}': {
     get: {
-      tags: ['Weather'],
-      summary: 'Get weather alert by ID',
+      tags: ['Weather', 'Alerts'],
+      summary: 'Get a single weather alert',
       operationId: 'getWeatherAlert',
-      parameters: [{ $ref: '#/components/parameters/mongoIdPath' }],
-      responses: { 200: { description: 'Alert.' }, 404: { $ref: '#/components/responses/NotFound' } },
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Alert details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/weather/alerts/{id}/acknowledge': {
+    post: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'Acknowledge a weather alert',
+      operationId: 'acknowledgeWeatherAlert',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Alert acknowledged.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/alerts/{id}/dismiss': {
+    post: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'Dismiss a weather alert',
+      operationId: 'dismissWeatherAlert',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Alert dismissed.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/org/{orgId}/alerts': {
+    get: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'List all alerts for an organization',
+      operationId: 'getOrgAlerts',
+      security: auth,
+      parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }, pageParam, limitParam],
+      responses: { 200: { description: 'Org-wide alerts.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  // ── Alert Rules Engine ────────────────────────────────────────────────────────
+
+  '/api/v1/weather/rules': {
+    get: {
+      tags: ['Weather'],
+      summary: 'List active alert rules',
+      operationId: 'listWeatherRules',
+      security: auth,
+      parameters: [pageParam, limitParam],
+      responses: { 200: { description: 'Rules list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Create alert rule',
+      description: '`platform_admin` only.',
+      operationId: 'createWeatherRule',
+      security: auth,
+      requestBody: r({ type: 'object', required: ['name', 'condition', 'severity'], properties: { name: { type: 'string' }, condition: { type: 'object' }, severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] }, message: { type: 'string' } } }),
+      responses: { 201: { description: 'Rule created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/rules/seed': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Seed default alert rules',
+      description: 'Seeds the platform default rule set. `platform_admin` only.',
+      operationId: 'seedWeatherRules',
+      security: auth,
+      responses: { 200: { description: 'Default rules seeded.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/rules/{id}': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get alert rule by ID',
+      operationId: 'getWeatherRule',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Rule details.' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
     patch: {
       tags: ['Weather', 'Admin'],
-      summary: 'Update weather alert',
-      operationId: 'updateWeatherAlert',
+      summary: 'Update alert rule',
+      description: '`platform_admin` only.',
+      operationId: 'updateWeatherRule',
       security: auth,
-      parameters: [{ $ref: '#/components/parameters/mongoIdPath' }],
-      requestBody: r({ type: 'object', properties: { severity: { type: 'string' }, description: { type: 'string' }, endsAt: { type: 'string', format: 'date-time' }, active: { type: 'boolean' } } }),
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, condition: { type: 'object' }, severity: { type: 'string' }, active: { type: 'boolean' } } }),
       responses: { 200: { description: 'Updated.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
-  },
-
-  '/api/v1/weather/subscriptions': {
-    get: {
-      tags: ['Weather'],
-      summary: 'Get my weather subscriptions',
-      operationId: 'getWeatherSubscriptions',
-      security: auth,
-      responses: { 200: { description: 'Subscriptions.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
-    },
-    post: {
-      tags: ['Weather'],
-      summary: 'Subscribe to weather alerts for a location',
-      operationId: 'createWeatherSubscription',
-      security: auth,
-      requestBody: r({
-        type: 'object',
-        required: ['location'],
-        properties: {
-          location: { type: 'object', required: ['lat', 'lng'], properties: { lat: { type: 'number' }, lng: { type: 'number' }, name: { type: 'string' } } },
-          alertTypes: { type: 'array', items: { type: 'string', enum: ['drought', 'flood', 'storm', 'frost', 'heatwave', 'locusts', 'general'] } },
-          channels: { type: 'array', items: { type: 'string', enum: ['push', 'sms', 'email', 'in_app'] } },
-          minSeverity: { type: 'string', enum: ['advisory', 'watch', 'warning', 'emergency'], default: 'watch' },
-        },
-      }),
-      responses: { 201: { description: 'Subscribed.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
-    },
-  },
-
-  '/api/v1/weather/subscriptions/{id}': {
-    patch: {
-      tags: ['Weather'],
-      summary: 'Update weather subscription',
-      operationId: 'updateWeatherSubscription',
-      security: auth,
-      parameters: [{ $ref: '#/components/parameters/mongoIdPath' }],
-      requestBody: r({ type: 'object', properties: { alertTypes: { type: 'array', items: { type: 'string' } }, channels: { type: 'array', items: { type: 'string' } }, active: { type: 'boolean' } } }),
-      responses: { 200: { description: 'Updated.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
-    },
     delete: {
-      tags: ['Weather'],
-      summary: 'Delete weather subscription',
-      operationId: 'deleteWeatherSubscription',
+      tags: ['Weather', 'Admin'],
+      summary: 'Delete alert rule',
+      description: '`platform_admin` only.',
+      operationId: 'deleteWeatherRule',
       security: auth,
-      parameters: [{ $ref: '#/components/parameters/mongoIdPath' }],
-      responses: { 200: { description: 'Deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      parameters: [idParam],
+      responses: { 200: { description: 'Deleted (soft).' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
-  '/api/v1/weather/agricultural': {
+  // ── Admin / Ingest ────────────────────────────────────────────────────────────
+
+  '/api/v1/weather/admin/refresh': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Refresh weather data for all profiles',
+      operationId: 'adminRefreshAllProfiles',
+      security: auth,
+      responses: { 200: { description: 'Refresh triggered.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/admin/profiles/{profileId}/refresh': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Manually refresh a single farm profile',
+      operationId: 'adminRefreshProfile',
+      security: auth,
+      parameters: [profileIdParam],
+      responses: { 200: { description: 'Profile refreshed.' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/weather/admin/retry-deliveries': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Retry failed alert deliveries',
+      operationId: 'adminRetryAlertDeliveries',
+      security: auth,
+      responses: { 200: { description: 'Retry queued.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/admin/expire-alerts': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Expire old weather alerts',
+      operationId: 'adminExpireWeatherAlerts',
+      security: auth,
+      responses: { 200: { description: 'Expiry job ran.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/admin/prune-snapshots': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Prune old condition snapshots',
+      operationId: 'adminPruneSnapshots',
+      security: auth,
+      responses: { 200: { description: 'Pruning complete.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/admin/providers': {
     get: {
-      tags: ['Weather'],
-      summary: 'Agricultural weather summary',
-      description: 'Returns growing degree days, evapotranspiration, and crop-specific weather advisories.',
-      operationId: 'agriculturalWeather',
-      parameters: [
-        { name: 'lat', in: 'query', required: true, schema: { type: 'number' } },
-        { name: 'lng', in: 'query', required: true, schema: { type: 'number' } },
-        { name: 'cropType', in: 'query', schema: { type: 'string' }, description: 'Tailor advisories to a specific crop.' },
-      ],
-      responses: { 200: { description: 'Agricultural weather.' }, 400: { $ref: '#/components/responses/ValidationError' } },
+      tags: ['Weather', 'Admin'],
+      summary: 'Get weather provider health status',
+      operationId: 'adminGetProviderStatus',
+      security: auth,
+      responses: { 200: { description: 'Provider health metrics.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 };

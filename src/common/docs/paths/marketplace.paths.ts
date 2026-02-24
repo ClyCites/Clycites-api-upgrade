@@ -43,7 +43,7 @@ export const marketplacePaths: Record<string, unknown> = {
     },
   },
 
-  '/api/v1/listings/my': {
+  '/api/v1/listings/my/listings': {
     get: {
       tags: ['Marketplace'],
       summary: 'My listings',
@@ -52,6 +52,17 @@ export const marketplacePaths: Record<string, unknown> = {
       security: auth,
       parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string' } }],
       responses: { 200: { description: 'My listings.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/listings/my/stats': {
+    get: {
+      tags: ['Marketplace'],
+      summary: 'My listing statistics',
+      description: 'Returns stats for the authenticated farmer\'s listings (total, active, sold, expired, total revenue, inquiry count).',
+      operationId: 'getMyListingStats',
+      security: auth,
+      responses: { 200: { description: 'Listing stats.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -91,6 +102,18 @@ export const marketplacePaths: Record<string, unknown> = {
       security: auth,
       parameters: [idParam],
       responses: { 200: { description: 'Listing deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/listings/{id}/inquire': {
+    post: {
+      tags: ['Marketplace'],
+      summary: 'Inquire about a listing',
+      description: 'Increments the inquiry count and optionally sends a message to the seller. Optional authentication.',
+      operationId: 'inquireListing',
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { message: { type: 'string', description: 'Optional inquiry message.' } } }),
+      responses: { 200: { description: 'Inquiry recorded.' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 

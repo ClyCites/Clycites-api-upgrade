@@ -1,18 +1,20 @@
-
 const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
-const idParam = { $ref: '#/components/parameters/mongoIdPath' };
+const reportIdParam = { name: 'reportId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } };
+const farmerIdParam = { name: 'farmerId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 
 export const pestDiseasePaths: Record<string, unknown> = {
 
-  '/api/v1/pest-disease': {
+  // ── Detection ─────────────────────────────────────────────────────────────────
+
+  '/api/v1/pest-disease/detect': {
     post: {
       tags: ['Pest & Disease'],
-      summary: 'Submit pest/disease report',
-      description: 'Upload images alongside report data. Uses `multipart/form-data`.',
-      operationId: 'createPestDiseaseReport',
+      summary: 'Submit pest/disease detection request',
+      description: 'Upload one or more crop images for AI-powered pest and disease analysis. Requires `farmer`, `extension_officer`, or `agronomist` role.',
+      operationId: 'submitDetection',
       security: auth,
       requestBody: {
         required: true,
@@ -20,160 +22,242 @@ export const pestDiseasePaths: Record<string, unknown> = {
           'multipart/form-data': {
             schema: {
               type: 'object',
-              required: ['cropType', 'symptoms'],
+              required: ['images', 'cropType'],
               properties: {
-                cropType: { type: 'string', example: 'Maize' },
-                symptoms: { type: 'string', description: 'Detailed symptom description.' },
+                images: { type: 'array', items: { type: 'string', format: 'binary' }, description: 'Up to 10 images (JPEG, PNG, WebP, HEIC). Max 10 MB each.' },
+                cropType: { type: 'string', example: 'maize' },
+                farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+                location: { type: 'string', description: 'JSON string: { "latitude": 0.3, "longitude": 32.5 }' },
+                severity: { type: 'string', enum: ['mild', 'moderate', 'severe'] },
+                symptoms: { type: 'string', description: 'Free-text description of observed symptoms.' },
                 affectedArea: { type: 'number', description: 'Estimated affected area in hectares.' },
-                severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                location: { type: 'string', description: 'JSON string: {"lat": 0.32, "lng": 32.58, "region": "Central"}' },
-                farmerId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
-                images: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: 5 },
               },
             },
+            encoding: { images: { contentType: 'image/jpeg, image/png, image/webp, image/heic' } },
           },
         },
       },
       responses: {
-        201: { description: 'Report submitted.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/PestDiseaseReport' } } }] } } } },
+        201: { description: 'Detection report created. AI analysis results returned.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/PestDiseaseReport' } } }] } } } },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
       },
-    },
-    get: {
-      tags: ['Pest & Disease'],
-      summary: 'List pest/disease reports',
-      operationId: 'listPestDiseaseReports',
-      security: auth,
-      parameters: [
-        pageParam, limitParam,
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'analyzing', 'analyzed', 'verified', 'resolved'] } },
-        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } },
-        { name: 'cropType', in: 'query', schema: { type: 'string' } },
-        { name: 'region', in: 'query', schema: { type: 'string' } },
-      ],
-      responses: { 200: { description: 'Report list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
-  '/api/v1/pest-disease/my': {
+  // ── Reports ───────────────────────────────────────────────────────────────────
+
+  '/api/v1/pest-disease/reports/{reportId}': {
     get: {
       tags: ['Pest & Disease'],
-      summary: 'Get my submitted reports',
-      operationId: 'myPestDiseaseReports',
+      summary: 'Get detection report by ID',
+      operationId: 'getPestDiseaseReport',
       security: auth,
-      parameters: [pageParam, limitParam],
-      responses: { 200: { description: 'My reports.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      parameters: [reportIdParam],
+      responses: {
+        200: { description: 'Report details including AI diagnosis, confidence, and expert review if available.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/PestDiseaseReport' } } }] } } } },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
     },
   },
+
+  '/api/v1/pest-disease/farmers/{farmerId}/reports': {
+    get: {
+      tags: ['Pest & Disease'],
+      summary: 'List pest/disease reports for a specific farmer',
+      operationId: 'getFarmerReports',
+      security: auth,
+      parameters: [
+        farmerIdParam, pageParam, limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'ai_analyzed', 'expert_reviewed', 'resolved'] } },
+        { name: 'cropType', in: 'query', schema: { type: 'string' } },
+      ],
+      responses: {
+        200: { description: 'Farmer detection reports.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/pest-disease/reports/{reportId}/review': {
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Submit expert review for a detection report',
+      description: 'Extension officers, agronomists, and admins can submit or override the AI diagnosis with an expert opinion.',
+      operationId: 'submitExpertReview',
+      security: auth,
+      parameters: [reportIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['diagnosis', 'confidence', 'recommendations'],
+        properties: {
+          diagnosis: { type: 'string', description: 'Expert-confirmed pest/disease identification.' },
+          confidence: { type: 'number', minimum: 0, maximum: 1, example: 0.95 },
+          recommendations: { type: 'array', items: { type: 'string' }, description: 'Actionable treatment steps.' },
+          treatmentPlan: { type: 'string' },
+          preventionMeasures: { type: 'array', items: { type: 'string' } },
+          followUpRequired: { type: 'boolean' },
+          notes: { type: 'string' },
+        },
+      }),
+      responses: {
+        200: { description: 'Expert review submitted.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/pest-disease/reports/{reportId}/feedback': {
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Submit farmer feedback on detection accuracy',
+      description: 'Farmers can rate the accuracy of a diagnosis to improve AI model quality.',
+      operationId: 'submitDetectionFeedback',
+      security: auth,
+      parameters: [reportIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['accuracyRating'],
+        properties: {
+          accuracyRating: { type: 'integer', minimum: 1, maximum: 5, description: '1 = very inaccurate, 5 = very accurate.' },
+          isCorrect: { type: 'boolean' },
+          actualPestDisease: { type: 'string', description: 'What the farmer believes the actual issue was (if differs from diagnosis).' },
+          comments: { type: 'string' },
+          treatmentEffective: { type: 'boolean' },
+        },
+      }),
+      responses: {
+        200: { description: 'Feedback submitted. Used to improve AI model accuracy.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  // ── Outbreaks ─────────────────────────────────────────────────────────────────
 
   '/api/v1/pest-disease/outbreaks': {
     get: {
       tags: ['Pest & Disease'],
-      summary: 'Active regional outbreak alerts',
-      operationId: 'pestDiseaseOutbreaks',
-      parameters: [
-        { name: 'region', in: 'query', schema: { type: 'string' } },
-        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['medium', 'high', 'critical'] } },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-      ],
-      responses: { 200: { description: 'Active outbreaks.' } },
-    },
-  },
-
-  '/api/v1/pest-disease/trends': {
-    get: {
-      tags: ['Pest & Disease'],
-      summary: 'Pest & disease trend data',
-      operationId: 'pestDiseaseTrends',
-      parameters: [
-        { name: 'region', in: 'query', schema: { type: 'string' } },
-        { name: 'cropType', in: 'query', schema: { type: 'string' } },
-        { $ref: '#/components/parameters/daysParam' },
-      ],
-      responses: { 200: { description: 'Trend data.' } },
-    },
-  },
-
-  '/api/v1/pest-disease/heatmap': {
-    get: {
-      tags: ['Pest & Disease'],
-      summary: 'Geographic heatmap data',
-      description: 'Returns geo-coordinates and severity levels for map rendering.',
-      operationId: 'pestDiseaseHeatmap',
+      summary: 'Get active pest/disease outbreak map',
+      description: 'Returns clusters of confirmed detections that qualify as outbreaks.',
+      operationId: 'getActiveOutbreaks',
+      security: auth,
       parameters: [
         { name: 'pestType', in: 'query', schema: { type: 'string' } },
-        { name: 'country', in: 'query', schema: { type: 'string' } },
-        { $ref: '#/components/parameters/daysParam' },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['mild', 'moderate', 'severe'] } },
+        { name: 'cropType', in: 'query', schema: { type: 'string' } },
+        pageParam, limitParam,
       ],
-      responses: { 200: { description: 'Heatmap data.' } },
+      responses: { 200: { description: 'Active outbreaks with geographic data.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
-  '/api/v1/pest-disease/stats': {
+  '/api/v1/pest-disease/outbreaks/hotspots': {
     get: {
       tags: ['Pest & Disease'],
-      summary: 'Aggregate statistics',
-      operationId: 'pestDiseaseStats',
+      summary: 'Identify outbreak hotspots (clustering analysis)',
+      description: 'Geographic clustering of detection reports to identify high-risk zones. Requires `extension_officer`, `agronomist`, or `platform_admin` role.',
+      operationId: 'getOutbreakHotspots',
       security: auth,
-      parameters: [{ $ref: '#/components/parameters/daysParam' }],
-      responses: { 200: { description: 'Stats.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      parameters: [
+        { name: 'radius', in: 'query', schema: { type: 'number' }, description: 'Clustering radius in km.' },
+        { name: 'minCases', in: 'query', schema: { type: 'integer' }, description: 'Minimum reports to qualify as a hotspot.' },
+        { name: 'pestType', in: 'query', schema: { type: 'string' } },
+        { name: 'days', in: 'query', schema: { type: 'integer', default: 30 } },
+      ],
+      responses: { 200: { description: 'Hotspot clusters with centroid coordinates and case counts.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
-  '/api/v1/pest-disease/{id}': {
+  // ── Analytics ─────────────────────────────────────────────────────────────────
+
+  '/api/v1/pest-disease/analytics/trends': {
     get: {
       tags: ['Pest & Disease'],
-      summary: 'Get report by ID',
-      operationId: 'getPestDiseaseReport',
+      summary: 'Pest/disease trend analysis',
+      description: 'Compares current vs previous period detection rates, confidence trends, and top pests. Requires `extension_officer`, `agronomist`, or `platform_admin` role.',
+      operationId: 'getPestDiseaseTrends',
       security: auth,
-      parameters: [idParam],
+      parameters: [
+        { name: 'days', in: 'query', schema: { type: 'integer', default: 30 }, description: 'Analysis window in days.' },
+        { name: 'compareWindow', in: 'query', schema: { type: 'integer', default: 30 }, description: 'Comparison period in days.' },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+        { name: 'cropType', in: 'query', schema: { type: 'string' } },
+      ],
+      responses: { 200: { description: 'Trend data comparing current and previous periods.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/pest-disease/analytics/dashboard': {
+    get: {
+      tags: ['Pest & Disease'],
+      summary: 'Comprehensive pest/disease analytics dashboard',
+      description: 'High-level dashboard with KPIs, breakdown by crop, region, and AI performance metrics.',
+      operationId: 'getPestDiseaseDashboard',
+      security: auth,
+      parameters: [
+        { name: 'days', in: 'query', schema: { type: 'integer', default: 30 } },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+      ],
+      responses: { 200: { description: 'Dashboard analytics.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  // ── Treatment Knowledge Base ───────────────────────────────────────────────────
+
+  '/api/v1/pest-disease/treatments/search': {
+    get: {
+      tags: ['Pest & Disease'],
+      summary: 'Search the treatment knowledge base',
+      operationId: 'searchTreatments',
+      security: auth,
+      parameters: [
+        { name: 'pestType', in: 'query', schema: { type: 'string' } },
+        { name: 'cropType', in: 'query', schema: { type: 'string' } },
+        { name: 'treatmentType', in: 'query', schema: { type: 'string', enum: ['organic', 'chemical', 'biological', 'cultural'] } },
+        { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Free-text keyword search.' },
+        pageParam, limitParam,
+      ],
+      responses: { 200: { description: 'Matching treatment entries.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/pest-disease/treatments': {
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Create treatment knowledge entry',
+      description: 'Requires `agronomist` or `platform_admin` role.',
+      operationId: 'createTreatmentKnowledge',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['pestDiseaseName', 'cropTypes', 'treatments'],
+        properties: {
+          pestDiseaseName: { type: 'string', example: 'Maize Lethal Necrosis' },
+          cropTypes: { type: 'array', items: { type: 'string' }, example: ['maize'] },
+          symptoms: { type: 'array', items: { type: 'string' } },
+          treatments: { type: 'array', items: { type: 'object', required: ['name', 'type'], properties: { name: { type: 'string' }, type: { type: 'string', enum: ['organic', 'chemical', 'biological', 'cultural'] }, instructions: { type: 'string' }, dosage: { type: 'string' }, effectiveness: { type: 'number', minimum: 0, maximum: 1 } } } },
+          preventionMeasures: { type: 'array', items: { type: 'string' } },
+          severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          references: { type: 'array', items: { type: 'string', format: 'uri' } },
+        },
+      }),
       responses: {
-        200: { description: 'Report.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/PestDiseaseReport' } } }] } } } },
+        201: { description: 'Treatment knowledge entry created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
-        404: { $ref: '#/components/responses/NotFound' },
+        403: { $ref: '#/components/responses/Forbidden' },
       },
-    },
-  },
-
-  '/api/v1/pest-disease/{id}/analyze': {
-    post: {
-      tags: ['Pest & Disease'],
-      summary: 'Trigger AI image analysis',
-      description: 'Submits report images to the ML pipeline for pest/disease identification.',
-      operationId: 'analyzePestDiseaseReport',
-      security: auth,
-      parameters: [idParam],
-      responses: {
-        200: { description: 'Analysis result.', content: { 'application/json': { schema: { type: 'object', properties: { identification: { type: 'string' }, confidence: { type: 'number' }, treatmentRecommendations: { type: 'array', items: { type: 'string' } }, preventionMeasures: { type: 'array', items: { type: 'string' } } } } } } },
-        401: { $ref: '#/components/responses/Unauthorized' },
-        404: { $ref: '#/components/responses/NotFound' },
-      },
-    },
-  },
-
-  '/api/v1/pest-disease/{id}/verify': {
-    post: {
-      tags: ['Pest & Disease'],
-      summary: 'Expert/admin verification',
-      description: 'Requires `expert` or `platform_admin` role.',
-      operationId: 'verifyPestDiseaseReport',
-      security: auth,
-      parameters: [idParam],
-      requestBody: r({ type: 'object', required: ['status', 'notes'], properties: { status: { type: 'string', enum: ['verified', 'rejected', 'needs_more_info'] }, notes: { type: 'string' }, confirmedIdentification: { type: 'string' }, treatmentRecommendations: { type: 'array', items: { type: 'string' } } } }),
-      responses: { 200: { description: 'Report verified.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
-    },
-  },
-
-  '/api/v1/pest-disease/{id}/advisory': {
-    post: {
-      tags: ['Pest & Disease'],
-      summary: 'Request expert advisory',
-      operationId: 'requestPestDiseaseAdvisory',
-      security: auth,
-      parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { message: { type: 'string' }, urgency: { type: 'string', enum: ['normal', 'urgent', 'critical'] } } }),
-      responses: { 200: { description: 'Advisory requested.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 };

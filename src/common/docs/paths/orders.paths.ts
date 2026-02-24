@@ -22,6 +22,9 @@ export const ordersPaths: Record<string, unknown> = {
         404: { description: 'Listing not found or no longer active.' },
       },
     },
+  },
+
+  '/api/v1/orders/my-orders': {
     get: {
       tags: ['Orders'],
       summary: 'List my orders',
@@ -34,6 +37,31 @@ export const ordersPaths: Record<string, unknown> = {
         { name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'] }, description: 'Filter by your role in the order.' },
       ],
       responses: { 200: { description: 'My orders.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/orders/my-stats': {
+    get: {
+      tags: ['Orders'],
+      summary: 'Get my order statistics',
+      operationId: 'getMyOrderStats',
+      security: auth,
+      responses: { 200: { description: 'Order stats (total, pending, completed, cancelled, revenue).' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/orders/farmer/orders': {
+    get: {
+      tags: ['Orders'],
+      summary: 'List orders as farmer/seller',
+      description: 'Returns incoming orders for products the authenticated farmer has listed.',
+      operationId: 'getFarmerOrders',
+      security: auth,
+      parameters: [
+        pageParam, limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string' } },
+      ],
+      responses: { 200: { description: 'Farmer orders.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -51,10 +79,13 @@ export const ordersPaths: Record<string, unknown> = {
         404: { $ref: '#/components/responses/NotFound' },
       },
     },
+  },
+
+  '/api/v1/orders/{id}/status': {
     patch: {
       tags: ['Orders'],
       summary: 'Update order status',
-      description: 'Transition order through its lifecycle (confirm, ship, deliver, complete, cancel).',
+      description: 'Transition order through its lifecycle (confirm, ship, deliver, complete, cancel). Requires farmer or admin role.',
       operationId: 'updateOrderStatus',
       security: auth,
       parameters: [idParam],
@@ -88,14 +119,15 @@ export const ordersPaths: Record<string, unknown> = {
     },
   },
 
-  '/api/v1/orders/admin/all': {
+  '/api/v1/orders/{id}/timeline': {
     get: {
-      tags: ['Orders', 'Admin'],
-      summary: 'List all orders (admin)',
-      operationId: 'adminListOrders',
+      tags: ['Orders'],
+      summary: 'Get order status timeline',
+      description: 'Returns the immutable status change audit trail for an order.',
+      operationId: 'getOrderTimeline',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string' } }, { name: 'farmer', in: 'query', schema: { type: 'string' } }],
-      responses: { 200: { description: 'All orders.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      parameters: [idParam],
+      responses: { 200: { description: 'Timeline entries.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 };
@@ -206,6 +238,55 @@ export const disputesPaths: Record<string, unknown> = {
       security: auth,
       parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string' } }],
       responses: { 200: { description: 'All disputes.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/disputes/admin/stats': {
+    get: {
+      tags: ['Disputes', 'Admin'],
+      summary: 'Get dispute statistics (admin)',
+      operationId: 'getDisputeStats',
+      security: auth,
+      responses: { 200: { description: 'Dispute stats by status, type, and resolution rate.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/disputes/{id}/review': {
+    post: {
+      tags: ['Disputes', 'Admin'],
+      summary: 'Review dispute (admin note)',
+      description: 'Admin adds a review note to the dispute.',
+      operationId: 'reviewDispute',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', required: ['note'], properties: { note: { type: 'string', minLength: 10 } } }),
+      responses: { 200: { description: 'Review note added.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/disputes/{id}/mediator': {
+    post: {
+      tags: ['Disputes', 'Admin'],
+      summary: 'Assign mediator to dispute',
+      description: 'Admin assigns a mediator (expert or admin user) to help resolve the dispute.',
+      operationId: 'assignMediator',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', required: ['mediatorId'], properties: { mediatorId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, note: { type: 'string' } } }),
+      responses: { 200: { description: 'Mediator assigned.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/disputes/{id}/close': {
+    post: {
+      tags: ['Disputes', 'Admin'],
+      summary: 'Close dispute',
+      description: 'Admin administratively closes the dispute.',
+      operationId: 'closeDispute',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', required: ['note'], properties: { note: { type: 'string', minLength: 10 } } }),
+      responses: { 200: { description: 'Dispute closed.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 };
