@@ -7,6 +7,7 @@ interface Config {
     env: string;
     port: number;
     apiVersion: string;
+    environment: string;
   };
   db: {
     uri: string;
@@ -102,6 +103,7 @@ const config: Config = {
     env: process.env.NODE_ENV || 'development',
     port: parseInt(process.env.PORT || '5000', 10),
     apiVersion: process.env.API_VERSION || 'v1',
+    environment: process.env.ENVIRONMENT || 'Development',
   },
   db: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/clycites',
@@ -190,6 +192,7 @@ const config: Config = {
     email: process.env.ADMIN_EMAIL || 'admin@clycites.com',
     initialPassword: process.env.ADMIN_INITIAL_PASSWORD || 'changeme',
   },
+
 };
 
 export default config;

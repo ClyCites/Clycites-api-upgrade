@@ -211,7 +211,7 @@ app.get('/', (_req, res) => {
     </div>
 
     <footer>
-      <span>Environment: <strong>Staging</strong></span>
+      <span>Environment: <strong>${config.app.environment}</strong></span>
       <span>© ${new Date().getFullYear()} ClyCites</span>
     </footer>
   </main>
