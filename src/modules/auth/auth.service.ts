@@ -101,7 +101,7 @@ class AuthService {
     await RefreshToken.create({
       user: user._id,
       token: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiresAt: TokenUtil.getRefreshTokenExpiryDate(tokens.refreshToken),
     });
 
     // Audit log
@@ -166,7 +166,7 @@ class AuthService {
     await RefreshToken.create({
       user: user._id,
       token: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expiresAt: TokenUtil.getRefreshTokenExpiryDate(tokens.refreshToken),
     });
 
     return {
@@ -217,7 +217,7 @@ class AuthService {
     await RefreshToken.create({
       user: user._id,
       token: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expiresAt: TokenUtil.getRefreshTokenExpiryDate(tokens.refreshToken),
     });
 
     return tokens;
@@ -247,6 +247,7 @@ class AuthService {
     });
 
     if (!otp) {
+      await this.incrementOtpAttempts(user._id.toString(), purpose);
       throw new BadRequestError('Invalid or expired OTP');
     }
 
@@ -372,6 +373,7 @@ class AuthService {
     });
 
     if (!otp) {
+      await this.incrementOtpAttempts(user._id.toString(), 'password_reset');
       throw new BadRequestError('Invalid or expired OTP');
     }
 
@@ -415,6 +417,26 @@ class AuthService {
     }
 
     return user;
+  }
+
+  private async incrementOtpAttempts(userId: string, purpose: string): Promise<void> {
+    const otp = await OTP.findOne({
+      user: userId,
+      purpose,
+      isUsed: false,
+      expiresAt: { $gt: new Date() },
+    }).sort({ createdAt: -1 });
+
+    if (!otp) {
+      return;
+    }
+
+    otp.attempts += 1;
+    if (otp.attempts >= 5) {
+      otp.isUsed = true;
+    }
+
+    await otp.save();
   }
 }
 

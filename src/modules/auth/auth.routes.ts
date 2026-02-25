@@ -31,12 +31,14 @@ router.post(
 
 router.post(
   '/refresh-token',
+  authLimiter,
   validate(refreshTokenValidator),
   authController.refreshToken
 );
 
 router.post(
   '/logout',
+  authLimiter,
   authController.logout
 );
 

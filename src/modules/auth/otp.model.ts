@@ -4,7 +4,7 @@ export interface IOTP extends Document {
   user: mongoose.Types.ObjectId;
   code: string;
   type: 'email' | 'phone';
-  purpose: 'verification' | 'password_reset' | 'login';
+  purpose: 'verification' | 'password_reset' | 'login' | 'mfa';
   expiresAt: Date;
   isUsed: boolean;
   attempts: number;
@@ -29,7 +29,7 @@ const OTPSchema = new Schema<IOTP>(
     },
     purpose: {
       type: String,
-      enum: ['verification', 'password_reset', 'login'],
+      enum: ['verification', 'password_reset', 'login', 'mfa'],
       required: true,
     },
     expiresAt: {

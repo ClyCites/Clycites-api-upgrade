@@ -39,4 +39,14 @@ export class TokenUtil {
       { expiresIn: '5m' }
     );
   }
+
+  static getRefreshTokenExpiryDate(refreshToken: string): Date {
+    const decoded = jwt.decode(refreshToken);
+
+    if (!decoded || typeof decoded === 'string' || typeof decoded.exp !== 'number') {
+      throw new Error('Invalid refresh token payload');
+    }
+
+    return new Date(decoded.exp * 1000);
+  }
 }

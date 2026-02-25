@@ -44,8 +44,8 @@ export const checkOwnership = (resourceField = 'userId') => {
       return next(new UnauthorizedError('Authentication required'));
     }
 
-    // Allow admins to access any resource
-    if (req.user.role === 'admin') {
+    // Allow platform-level admins to access any resource
+    if (['admin', 'platform_admin'].includes(req.user.role)) {
       return next();
     }
 

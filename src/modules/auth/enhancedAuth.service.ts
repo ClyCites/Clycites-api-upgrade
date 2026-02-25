@@ -101,14 +101,22 @@ class EnhancedAuthService {
       // Log security event
       await SecurityEvent.create({
         user: user._id,
-        eventType: 'suspicious_login',
-        severity: 'high',
+        type: 'auth',
+        category: 'suspicious_login',
+        severity: 'error',
+        title: 'Suspicious Login Attempt',
         description: 'Suspicious login attempt detected',
-        metadata: {
-          flags: suspiciousFlags,
-          device: device._id,
+        context: {
           ipAddress: deviceInfo.ipAddress,
+          userAgent: deviceInfo.userAgent,
+          deviceId: device._id.toString(),
         },
+        riskScore: 85,
+        isSuspicious: true,
+        isBlocked: false,
+        responseStatus: 'open',
+        actionTaken: 'Security alert email sent',
+        timestamp: new Date(),
       });
 
       // Send security alert email
@@ -263,7 +271,7 @@ class EnhancedAuthService {
     await RefreshToken.create({
       user: user._id,
       token: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiresAt: TokenUtil.getRefreshTokenExpiryDate(tokens.refreshToken),
       deviceId: tokenDoc.deviceId, // Link to same device
     });
 
@@ -335,7 +343,7 @@ class EnhancedAuthService {
     await RefreshToken.create({
       user: user._id,
       token: tokens.refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiresAt: TokenUtil.getRefreshTokenExpiryDate(tokens.refreshToken),
       deviceId,
     });
 
@@ -347,14 +355,21 @@ class EnhancedAuthService {
    */
   private async logFailedLogin(email: string, ipAddress: string, reason: string): Promise<void> {
     await SecurityEvent.create({
-      eventType: 'failed_login',
-      severity: 'medium',
+      type: 'auth',
+      category: 'failed_login',
+      severity: 'warning',
+      title: 'Failed Login Attempt',
       description: `Failed login attempt for ${email}`,
-      metadata: {
-        email,
+      context: {
         ipAddress,
-        reason,
+        userAgent: 'unknown',
       },
+      riskScore: 55,
+      isSuspicious: true,
+      isBlocked: false,
+      responseStatus: 'open',
+      timestamp: new Date(),
+      actionTaken: 'Attempt logged',
     });
 
     await AuditService.log({
@@ -385,12 +400,21 @@ class EnhancedAuthService {
       // Log security event
       await SecurityEvent.create({
         user: token.user,
-        eventType: 'token_reuse_detected',
+        type: 'auth',
+        category: 'token_reuse_detected',
         severity: 'critical',
+        title: 'Refresh Token Reuse Detected',
         description: 'Refresh token reuse detected - potential security breach',
-        metadata: {
-          tokenId: token._id,
+        context: {
+          ipAddress: 'unknown',
+          userAgent: 'unknown',
         },
+        riskScore: 95,
+        isSuspicious: true,
+        isBlocked: true,
+        responseStatus: 'open',
+        timestamp: new Date(),
+        actionTaken: 'Revoked all active refresh tokens',
       });
 
       // Send security alert
