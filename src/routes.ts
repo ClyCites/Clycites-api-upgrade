@@ -23,6 +23,7 @@ import reputationRoutes from './modules/reputation/reputation.routes';
 import marketIntelligenceRoutes from './modules/market-intelligence/marketIntelligence.routes';
 import organizationRoutes from './modules/organizations/organization.routes';
 import offerRoutes from './modules/offers/offer.routes';
+import userRoutes from './modules/users/user.routes';
 
 const router = Router();
 
@@ -54,6 +55,7 @@ router.use(`${API_VERSION}/reputation`, reputationRoutes);        // Reputation 
 router.use(`${API_VERSION}/market-intelligence`, marketIntelligenceRoutes); // Market Intelligence & Alerts
 router.use(`${API_VERSION}/organizations`, organizationRoutes);   // Organizations (Co-ops)
 router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace Offers & Negotiation
+router.use(`${API_VERSION}/users`, userRoutes);                   // Admin User Management
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {
