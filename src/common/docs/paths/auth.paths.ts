@@ -12,7 +12,7 @@ export const authPaths: Record<string, unknown> = {
     post: {
       tags: ['Authentication'],
       summary: 'Register new account',
-      description: 'Create a new user account. Sends a verification email upon success.',
+      description: 'Create a new user account with optional enterprise profile metadata. Sends a verification email upon success.',
       operationId: 'authRegister',
       requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/RegisterRequest' } } } },
       responses: {
@@ -27,7 +27,7 @@ export const authPaths: Record<string, unknown> = {
     post: {
       tags: ['Authentication'],
       summary: 'Login',
-      description: 'Authenticate with email + password. Returns JWT access token and sets refresh token cookie.',
+      description: 'Authenticate with email + password. Applies account lockout rules and returns profile + security context with JWT tokens.',
       operationId: 'authLogin',
       requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } },
       responses: {
@@ -112,6 +112,69 @@ export const authPaths: Record<string, unknown> = {
       operationId: 'authMe',
       security: [{ BearerAuth: [] }],
       responses: { ...ok('Current user.', { $ref: '#/components/schemas/User' }), 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/auth/me/profile': {
+    patch: {
+      tags: ['Authentication'],
+      summary: 'Update current user profile',
+      description: 'Authenticated users can update their enterprise profile fields (preferences, identity metadata, contact details).',
+      operationId: 'authUpdateMyProfile',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                firstName: { type: 'string' },
+                lastName: { type: 'string' },
+                phone: { type: 'string' },
+                timezone: { type: 'string' },
+                language: { type: 'string' },
+                profile: { type: 'object', additionalProperties: true },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Profile updated successfully.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+  },
+
+  '/api/v1/auth/change-password': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'Change password',
+      description: 'Authenticated password change. Revokes all active refresh-token sessions.',
+      operationId: 'authChangePassword',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['currentPassword', 'newPassword'],
+              properties: {
+                currentPassword: { type: 'string', format: 'password' },
+                newPassword: { type: 'string', format: 'password', minLength: 12 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Password changed successfully.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
     },
   },
 };

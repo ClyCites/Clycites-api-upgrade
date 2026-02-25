@@ -2,7 +2,7 @@ import { Router } from 'express';
 import authController from './auth.controller';
 import { authenticate } from '../../common/middleware/auth';
 import { validate } from '../../common/middleware/validate';
-import { authLimiter } from '../../common/middleware/rateLimiter';
+import { authLimiter, sensitiveLimiter } from '../../common/middleware/rateLimiter';
 import {
   registerValidator,
   loginValidator,
@@ -11,6 +11,8 @@ import {
   forgotPasswordValidator,
   resetPasswordValidator,
   refreshTokenValidator,
+  updateMyProfileValidator,
+  changePasswordValidator,
 } from './auth.validator';
 
 const router = Router();
@@ -71,6 +73,21 @@ router.post(
 );
 
 // Protected routes
+router.patch(
+  '/me/profile',
+  authenticate,
+  validate(updateMyProfileValidator),
+  authController.updateMyProfile
+);
+
+router.post(
+  '/change-password',
+  authenticate,
+  sensitiveLimiter,
+  validate(changePasswordValidator),
+  authController.changePassword
+);
+
 router.get(
   '/me',
   authenticate,

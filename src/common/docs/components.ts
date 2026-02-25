@@ -138,14 +138,36 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
 
   RegisterRequest: {
     type: 'object',
-    required: ['email', 'password', 'firstName', 'lastName', 'role'],
+    required: ['email', 'password', 'firstName', 'lastName'],
     properties: {
       firstName: { type: 'string', example: 'Amara' },
       lastName: { type: 'string', example: 'Nakato' },
       email: { type: 'string', format: 'email', example: 'amara@clycites.com' },
       phone: { type: 'string', example: '+256700123456' },
-      password: { type: 'string', format: 'password', minLength: 8, example: 'P@ssw0rd123' },
-      role: { type: 'string', enum: ['farmer', 'buyer', 'trader', 'expert', 'org_admin', 'admin'], example: 'farmer' },
+      password: { type: 'string', format: 'password', minLength: 12, example: 'P@ssw0rd1234!' },
+      role: { type: 'string', enum: ['farmer', 'buyer', 'trader', 'expert'], example: 'farmer' },
+      timezone: { type: 'string', example: 'Africa/Kampala' },
+      language: { type: 'string', example: 'en' },
+      profile: {
+        type: 'object',
+        properties: {
+          displayName: { type: 'string', example: 'Amara Nakato' },
+          nationality: { type: 'string', example: 'Ugandan' },
+          address: {
+            type: 'object',
+            properties: {
+              city: { type: 'string', example: 'Kampala' },
+              country: { type: 'string', example: 'Uganda' },
+            },
+          },
+          preferences: {
+            type: 'object',
+            properties: {
+              preferredContactMethod: { type: 'string', enum: ['email', 'phone', 'sms', 'whatsapp', 'in_app'] },
+            },
+          },
+        },
+      },
     },
   },
 
@@ -175,9 +197,41 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       lastName: { type: 'string' },
       email: { type: 'string', format: 'email' },
       phone: { type: 'string' },
-      role: { type: 'string', enum: ['farmer', 'buyer', 'trader', 'expert', 'org_admin', 'admin', 'platform_admin'] },
-      isVerified: { type: 'boolean' },
+      role: { type: 'string', enum: ['platform_admin', 'admin', 'farmer', 'buyer', 'trader', 'expert'] },
+      isEmailVerified: { type: 'boolean' },
+      isPhoneVerified: { type: 'boolean' },
+      isMfaEnabled: { type: 'boolean' },
       isActive: { type: 'boolean' },
+      timezone: { type: 'string' },
+      language: { type: 'string' },
+      profile: {
+        type: 'object',
+        properties: {
+          displayName: { type: 'string' },
+          dateOfBirth: { type: 'string', format: 'date-time' },
+          completionScore: { type: 'number', minimum: 0, maximum: 100 },
+          identity: {
+            type: 'object',
+            properties: {
+              kycStatus: { type: 'string', enum: ['not_started', 'pending', 'verified', 'rejected', 'expired'] },
+              documentType: { type: 'string' },
+            },
+          },
+          preferences: {
+            type: 'object',
+            properties: {
+              preferredContactMethod: { type: 'string', enum: ['email', 'phone', 'sms', 'whatsapp', 'in_app'] },
+            },
+          },
+          compliance: {
+            type: 'object',
+            properties: {
+              termsAccepted: { type: 'boolean' },
+              privacyPolicyAccepted: { type: 'boolean' },
+            },
+          },
+        },
+      },
       createdAt: isoDate,
       updatedAt: isoDate,
     },
