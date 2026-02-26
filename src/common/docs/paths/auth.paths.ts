@@ -47,6 +47,20 @@ export const authPaths: Record<string, unknown> = {
       summary: 'Refresh access token',
       description: 'Exchange a valid refresh token for a new access token.',
       operationId: 'authRefreshToken',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['refreshToken'],
+              properties: {
+                refreshToken: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
       responses: { ...ok('New tokens issued.', { $ref: '#/components/schemas/AuthTokens' }) },
     },
   },
@@ -68,7 +82,22 @@ export const authPaths: Record<string, unknown> = {
       summary: 'Verify OTP code',
       description: 'Verifies the OTP sent to the user\'s email after registration.',
       operationId: 'authVerifyOTP',
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'otp'], properties: { email: { type: 'string', format: 'email' }, otp: { type: 'string', minLength: 6, maxLength: 6, example: '123456' } } } } } },
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'code', 'purpose'],
+              properties: {
+                email: { type: 'string', format: 'email' },
+                code: { type: 'string', minLength: 6, maxLength: 6, example: '123456' },
+                purpose: { type: 'string', enum: ['verification', 'password_reset', 'login'] },
+              },
+            },
+          },
+        },
+      },
       responses: { 200: { description: 'OTP verified successfully.' }, 400: { $ref: '#/components/responses/ValidationError' }, 429: { $ref: '#/components/responses/TooManyRequests' } },
     },
   },
@@ -79,7 +108,21 @@ export const authPaths: Record<string, unknown> = {
       summary: 'Resend OTP code',
       description: 'Resends the verification OTP to the user\'s registered email address.',
       operationId: 'authResendOTP',
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string', format: 'email' } } } } } },
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'purpose'],
+              properties: {
+                email: { type: 'string', format: 'email' },
+                purpose: { type: 'string', enum: ['verification', 'password_reset', 'login'] },
+              },
+            },
+          },
+        },
+      },
       responses: { 200: { description: 'OTP resent.' }, 400: { $ref: '#/components/responses/ValidationError' }, 429: { $ref: '#/components/responses/TooManyRequests' } },
     },
   },
@@ -100,7 +143,22 @@ export const authPaths: Record<string, unknown> = {
       tags: ['Authentication'],
       summary: 'Reset password',
       operationId: 'authResetPassword',
-      requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['token', 'newPassword'], properties: { token: { type: 'string' }, newPassword: { type: 'string', format: 'password', minLength: 8 } } } } } },
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['email', 'code', 'newPassword'],
+              properties: {
+                email: { type: 'string', format: 'email' },
+                code: { type: 'string', minLength: 6, maxLength: 6, example: '123456' },
+                newPassword: { type: 'string', format: 'password', minLength: 12 },
+              },
+            },
+          },
+        },
+      },
       responses: { 200: { description: 'Password reset successfully.' }, 400: { $ref: '#/components/responses/ValidationError' } },
     },
   },
