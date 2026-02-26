@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented in this file.
 
-## [1.0.0] - 2026-02-26
+
+
+## [unreleased] - 2026-02-26
 
 ### Added
 - Centralized Super Admin middleware (`superAdmin`) for explicit mode, scope, and override checks.
