@@ -9,6 +9,9 @@ import connectDB from './common/config/database';
 import logger from './common/utils/logger';
 import { errorHandler, notFoundHandler } from './common/middleware/errorHandler';
 import { apiLimiter } from './common/middleware/rateLimiter';
+import { requestContext } from './common/middleware/requestContext';
+import { superAdminAudit } from './common/middleware/superAdminAudit';
+import { maintenanceModeGuard } from './common/middleware/maintenanceMode';
 import routes from './routes';
 import { openApiSpec } from './common/docs';
 
@@ -229,6 +232,7 @@ app.use(cors({
 app.use(compression()); // Compress responses
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(requestContext);
 
 // Logging
 if (config.app.env === 'development') {
@@ -243,6 +247,8 @@ if (config.app.env === 'development') {
 
 // Rate limiting
 app.use(apiLimiter);
+app.use(superAdminAudit);
+app.use(maintenanceModeGuard);
 
 // Routes
 app.use(routes);

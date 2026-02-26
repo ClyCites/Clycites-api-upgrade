@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { paymentController } from './payment.controller';
 import { authenticate } from '../../common/middleware/auth';
+import { enforceIdempotency } from '../../common/middleware/idempotency';
 
 const router = Router();
 
@@ -21,7 +22,12 @@ router.get('/wallet', authenticate, paymentController.getWallet);
  * @access  Authenticated users
  * @body    { amount, paymentMethod, reference }
  */
-router.post('/wallet/deposit', authenticate, paymentController.depositFunds);
+router.post(
+  '/wallet/deposit',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 180 }),
+  paymentController.depositFunds
+);
 
 /**
  * @route   POST /api/payments/wallet/withdraw
@@ -29,7 +35,12 @@ router.post('/wallet/deposit', authenticate, paymentController.depositFunds);
  * @access  Authenticated users
  * @body    { amount, withdrawalMethod, accountDetails }
  */
-router.post('/wallet/withdraw', authenticate, paymentController.withdrawFunds);
+router.post(
+  '/wallet/withdraw',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 180 }),
+  paymentController.withdrawFunds
+);
 
 /**
  * @route   GET /api/payments/transactions
@@ -45,7 +56,12 @@ router.get('/transactions', authenticate, paymentController.getTransactions);
  * @access  Authenticated users (buyers)
  * @body    { orderId, amount }
  */
-router.post('/escrow/initiate', authenticate, paymentController.initiateEscrow);
+router.post(
+  '/escrow/initiate',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 180 }),
+  paymentController.initiateEscrow
+);
 
 /**
  * @route   GET /api/payments/escrow
@@ -71,6 +87,7 @@ router.get('/escrow/:escrowId', authenticate, paymentController.getEscrowDetails
 router.post(
   '/escrow/:escrowId/release',
   authenticate,
+  enforceIdempotency({ ttlMinutes: 120 }),
   paymentController.releaseEscrow
 );
 
@@ -83,6 +100,7 @@ router.post(
 router.post(
   '/escrow/:escrowId/refund',
   authenticate,
+  enforceIdempotency({ ttlMinutes: 120 }),
   paymentController.refundEscrow
 );
 

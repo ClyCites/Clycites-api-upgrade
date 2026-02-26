@@ -23,6 +23,7 @@ import { reputationPaths } from './paths/reputation.paths';
 import { marketIntelligencePaths } from './paths/marketIntelligence.paths';
 import { organizationsPaths } from './paths/organizations.paths';
 import { offersPaths } from './paths/offers.paths';
+import { adminPaths } from './paths/admin.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -54,9 +55,8 @@ All responses follow a uniform envelope:
 \`\`\`json
 {
   "success": true,
-  "message": "Human-readable result",
   "data": { ... },
-  "meta": { "timestamp": "2024-01-01T00:00:00.000Z", "pagination": { ... } }
+  "meta": { "requestId": "req_123", "timestamp": "2024-01-01T00:00:00.000Z", "pagination": { ... } }
 }
 \`\`\`
 
@@ -149,6 +149,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...marketIntelligencePaths,
     ...organizationsPaths,
     ...offersPaths,
+    ...adminPaths,
   } as OpenAPIV3_1.Document['paths'],
 
   components,

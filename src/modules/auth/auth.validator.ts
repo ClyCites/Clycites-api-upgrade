@@ -1,4 +1,4 @@
-import { body } from 'express-validator';
+import { body, param } from 'express-validator';
 
 const selfRegisterRoles = ['farmer', 'buyer', 'expert', 'trader'];
 const contactMethods = ['email', 'phone', 'sms', 'whatsapp', 'in_app'];
@@ -402,4 +402,73 @@ export const changePasswordValidator = [
       }
       return true;
     }),
+];
+
+export const createSuperAdminTokenValidator = [
+  body('scopes')
+    .isArray({ min: 1, max: 20 })
+    .withMessage('scopes must be an array with at least one scope and at most 20 scopes'),
+  body('scopes.*')
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('Each scope must be between 2 and 120 characters'),
+  body('reason')
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+  body('expiresInMinutes')
+    .optional()
+    .isInt({ min: 1, max: 30 })
+    .withMessage('expiresInMinutes must be between 1 and 30')
+    .toInt(),
+];
+
+export const revokeSuperAdminTokenValidator = [
+  param('grantId')
+    .isString()
+    .trim()
+    .isLength({ min: 10, max: 80 })
+    .withMessage('grantId is invalid'),
+  body('reason')
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+];
+
+export const startImpersonationValidator = [
+  body('targetUserId')
+    .isMongoId()
+    .withMessage('targetUserId must be a valid user ID'),
+  body('reason')
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+  body('ttlMinutes')
+    .optional()
+    .isInt({ min: 1, max: 60 })
+    .withMessage('ttlMinutes must be between 1 and 60')
+    .toInt(),
+  body('scopes')
+    .optional()
+    .isArray({ max: 20 })
+    .withMessage('scopes must be an array with at most 20 entries'),
+  body('scopes.*')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('Each scope must be between 2 and 120 characters'),
+];
+
+export const revokeImpersonationValidator = [
+  param('sessionId')
+    .isString()
+    .trim()
+    .isLength({ min: 10, max: 80 })
+    .withMessage('sessionId is invalid'),
+  body('reason')
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
 ];

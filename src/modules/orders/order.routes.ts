@@ -3,6 +3,7 @@ import orderController from './order.controller';
 import { authenticate } from '../../common/middleware/auth';
 import { authorize } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
+import { enforceIdempotency } from '../../common/middleware/idempotency';
 import {
   createOrderValidator,
   updateStatusValidator,
@@ -22,6 +23,7 @@ router.use(authenticate);
 router.post(
   '/',
   authorize('buyer', 'farmer', 'admin'),
+  enforceIdempotency({ ttlMinutes: 180 }),
   validate(createOrderValidator),
   orderController.createOrder
 );

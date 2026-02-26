@@ -177,4 +177,159 @@ export const authPaths: Record<string, unknown> = {
       },
     },
   },
+
+  '/api/v1/auth/super-admin/tokens': {
+    get: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'List my Super Admin scoped tokens',
+      description: 'Super Admin only. Returns active and historical scoped grants issued by the current actor.',
+      operationId: 'listSuperAdminTokens',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Scoped token grants retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    post: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'Create Super Admin scoped token',
+      description: 'Super Admin only. Issues a short-lived, scoped, revocable token.',
+      operationId: 'createSuperAdminToken',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['scopes', 'reason'],
+              properties: {
+                scopes: { type: 'array', items: { type: 'string' } },
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+                expiresInMinutes: { type: 'integer', minimum: 1, maximum: 30, default: 10 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Scoped token created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/super-admin/tokens/{grantId}': {
+    delete: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'Revoke Super Admin scoped token',
+      description: 'Super Admin only. Revokes a previously issued scoped token grant.',
+      operationId: 'revokeSuperAdminToken',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'grantId', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: {
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Scoped token revoked.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/super-admin/impersonation': {
+    get: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'List my impersonation sessions',
+      description: 'Super Admin only. Returns recent impersonation sessions issued by current actor.',
+      operationId: 'listImpersonationSessions',
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: { description: 'Impersonation sessions retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    post: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'Start user impersonation',
+      description: 'Super Admin only. Creates a temporary, revocable impersonation session with mandatory reason.',
+      operationId: 'startImpersonation',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['targetUserId', 'reason'],
+              properties: {
+                targetUserId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+                ttlMinutes: { type: 'integer', minimum: 1, maximum: 60, default: 15 },
+                scopes: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Impersonation session created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/super-admin/impersonation/{sessionId}': {
+    delete: {
+      tags: ['Authentication', 'Admin'],
+      summary: 'Revoke impersonation session',
+      description: 'Super Admin only. Immediately revokes an impersonation session.',
+      operationId: 'revokeImpersonationSession',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'sessionId', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: {
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Impersonation session revoked.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
 };

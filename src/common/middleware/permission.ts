@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import AuthorizationService from '../../modules/permissions/authorization.service';
 import { ForbiddenError } from '../errors/AppError';
+import { canBypassAuthorization } from './superAdmin';
 
 /**
  * Middleware to check if user has required permission
@@ -14,6 +15,10 @@ export const requirePermission = (
     try {
       if (!req.user) {
         throw new ForbiddenError('Authentication required');
+      }
+
+      if (canBypassAuthorization(req, ['super_admin:rbac:override'])) {
+        return next();
       }
 
       const organizationId = req.headers['x-organization-id'] as string;
@@ -33,9 +38,9 @@ export const requirePermission = (
         ownerId,
       });
 
-      next();
+      return next();
     } catch (error) {
-      next(error);
+      return next(error);
     }
   };
 };
@@ -52,6 +57,10 @@ export const requireAnyPermission = (permissions: Array<{
     try {
       if (!req.user) {
         throw new ForbiddenError('Authentication required');
+      }
+
+      if (canBypassAuthorization(req, ['super_admin:rbac:override'])) {
+        return next();
       }
 
       const organizationId = req.headers['x-organization-id'] as string;
@@ -91,6 +100,10 @@ export const requireOrganizationAdmin = async (
       throw new ForbiddenError('Authentication required');
     }
 
+    if (canBypassAuthorization(req, ['super_admin:tenant:override'])) {
+      return next();
+    }
+
     const organizationId = req.params.organizationId || req.headers['x-organization-id'] as string;
 
     if (!organizationId) {
@@ -106,9 +119,9 @@ export const requireOrganizationAdmin = async (
       throw new ForbiddenError('Organization admin access required');
     }
 
-    next();
+    return next();
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
@@ -123,6 +136,10 @@ export const requireOrganizationOwner = async (
   try {
     if (!req.user) {
       throw new ForbiddenError('Authentication required');
+    }
+
+    if (canBypassAuthorization(req, ['super_admin:tenant:override'])) {
+      return next();
     }
 
     const organizationId = req.params.organizationId || req.headers['x-organization-id'] as string;
@@ -140,9 +157,9 @@ export const requireOrganizationOwner = async (
       throw new ForbiddenError('Organization owner access required');
     }
 
-    next();
+    return next();
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 

@@ -49,7 +49,7 @@ async function upsertUser(data: {
   firstName: string;
   lastName: string;
   phone?: string;
-  role: 'platform_admin' | 'farmer' | 'buyer' | 'expert' | 'trader';
+  role: 'super_admin' | 'platform_admin' | 'farmer' | 'buyer' | 'expert' | 'trader';
 }) {
   const existing = await User.findOne({ email: data.email });
   if (existing) {
@@ -102,7 +102,7 @@ async function seedUsers() {
     firstName: 'Super',
     lastName:  'Admin',
     phone:     '+256700000001',
-    role:      'platform_admin',
+    role:      'super_admin',
   });
 
   const admin = await upsertUser({

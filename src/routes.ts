@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import authRoutes from './modules/auth/auth.routes';
 import farmerRoutes from './modules/farmers/farmer.routes';
 import farmersEnterpriseRoutes from './modules/farmers/farmersEnterprise.routes';
@@ -24,6 +25,9 @@ import marketIntelligenceRoutes from './modules/market-intelligence/marketIntell
 import organizationRoutes from './modules/organizations/organization.routes';
 import offerRoutes from './modules/offers/offer.routes';
 import userRoutes from './modules/users/user.routes';
+import platformControlRoutes from './modules/admin/platformControl.routes';
+import { ResponseHandler } from './common/utils/response';
+import config from './common/config';
 
 const router = Router();
 
@@ -56,15 +60,55 @@ router.use(`${API_VERSION}/market-intelligence`, marketIntelligenceRoutes); // M
 router.use(`${API_VERSION}/organizations`, organizationRoutes);   // Organizations (Co-ops)
 router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace Offers & Negotiation
 router.use(`${API_VERSION}/users`, userRoutes);                   // Admin User Management
+router.use(`${API_VERSION}/admin`, platformControlRoutes);        // Platform Controls
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {
-  res.json({
-    success: true,
-    message: 'ClyCites API is running',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-  });
+  return ResponseHandler.success(
+    res,
+    {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+    },
+    'ClyCites API is running'
+  );
+});
+
+router.get(`${API_VERSION}/ready`, (_req, res) => {
+  const isReady = mongoose.connection.readyState === 1;
+  if (!isReady) {
+    return ResponseHandler.error(
+      res,
+      'Service is not ready',
+      503,
+      'SERVICE_UNAVAILABLE',
+      { databaseState: mongoose.connection.readyState }
+    );
+  }
+
+  return ResponseHandler.success(
+    res,
+    {
+      status: 'ready',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    },
+    'Service is ready'
+  );
+});
+
+router.get(`${API_VERSION}/version`, (_req, res) => {
+  return ResponseHandler.success(
+    res,
+    {
+      appVersion: '1.0.0',
+      apiVersion: config.app.apiVersion,
+      nodeEnv: config.app.env,
+      timestamp: new Date().toISOString(),
+    },
+    'Version information retrieved'
+  );
 });
 
 export default router;

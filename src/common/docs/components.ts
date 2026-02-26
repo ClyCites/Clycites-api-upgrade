@@ -110,14 +110,18 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       },
       meta: {
         type: 'object',
-        properties: { timestamp: { type: 'string', format: 'date-time' } },
+        properties: {
+          requestId: { type: 'string' },
+          timestamp: { type: 'string', format: 'date-time' },
+          impersonatedUserId: mongoId,
+        },
       },
     },
   },
 
   SuccessResponse: {
     type: 'object',
-    required: ['success', 'message'],
+    required: ['success'],
     properties: {
       success: { type: 'boolean', example: true },
       message: { type: 'string', example: 'Success' },
@@ -125,7 +129,9 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       meta: {
         type: 'object',
         properties: {
+          requestId: { type: 'string', example: 'req_01HXYZ...' },
           timestamp: isoDate,
+          impersonatedUserId: mongoId,
           pagination: paginationMeta,
         },
       },
@@ -197,7 +203,7 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       lastName: { type: 'string' },
       email: { type: 'string', format: 'email' },
       phone: { type: 'string' },
-      role: { type: 'string', enum: ['platform_admin', 'admin', 'farmer', 'buyer', 'trader', 'expert'] },
+      role: { type: 'string', enum: ['super_admin', 'platform_admin', 'admin', 'farmer', 'buyer', 'trader', 'expert'] },
       isEmailVerified: { type: 'boolean' },
       isPhoneVerified: { type: 'boolean' },
       isMfaEnabled: { type: 'boolean' },

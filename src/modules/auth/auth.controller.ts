@@ -159,6 +159,109 @@ export class AuthController {
     }
   };
 
+  createScopedSuperAdminToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const { scopes = [], reason, expiresInMinutes } = req.body;
+      const parsedScopes = this.toScopes(scopes);
+
+      const result = await this.authService.createScopedSuperAdminToken(
+        {
+          actorId,
+          scopes: parsedScopes,
+          reason,
+          expiresInMinutes,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.created(res, result, 'Super Admin scoped token created');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  revokeScopedSuperAdminToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const { reason } = req.body;
+
+      await this.authService.revokeScopedSuperAdminToken(
+        {
+          actorId,
+          grantId: req.params.grantId,
+          reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.success(res, null, 'Super Admin scoped token revoked');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listScopedSuperAdminTokens = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const grants = await this.authService.listScopedSuperAdminTokens(actorId);
+      ResponseHandler.success(res, grants, 'Super Admin scoped tokens retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  startImpersonation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const { targetUserId, reason, scopes = [], ttlMinutes } = req.body;
+      const parsedScopes = this.toScopes(scopes);
+
+      const session = await this.authService.startImpersonationSession({
+        actorId,
+        targetUserId,
+        reason,
+        scopes: parsedScopes,
+        ttlMinutes,
+        context: this.getRequestContext(req),
+      });
+
+      ResponseHandler.created(res, session, 'Impersonation session started');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  revokeImpersonation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const { reason } = req.body;
+
+      await this.authService.revokeImpersonationSession(
+        {
+          actorId,
+          sessionId: req.params.sessionId,
+          reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.success(res, null, 'Impersonation session revoked');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listImpersonationSessions = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const sessions = await this.authService.listImpersonationSessions(actorId);
+      ResponseHandler.success(res, sessions, 'Impersonation sessions retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
   private getRequestContext(req: Request) {
     const userAgentHeader = req.headers['user-agent'];
     const userAgent = typeof userAgentHeader === 'string' ? userAgentHeader : 'unknown';
@@ -168,6 +271,29 @@ export class AuthController {
       userAgent,
       deviceId: req.headers['x-device-id'] as string | undefined,
     };
+  }
+
+  private getActorId(req: Request): string {
+    if (!req.user?.id) {
+      throw new BadRequestError('User ID not found');
+    }
+
+    return req.user.id;
+  }
+
+  private toScopes(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item));
+    }
+
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((scope) => scope.trim())
+        .filter(Boolean);
+    }
+
+    return [];
   }
 }
 

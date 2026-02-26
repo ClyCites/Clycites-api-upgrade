@@ -842,7 +842,7 @@ export const addFollowUp = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const isExpert = ['expert', 'platform_admin'].includes(req.user!.role);
+    const isExpert = ['expert', 'platform_admin', 'super_admin'].includes(req.user!.role);
     const inquiry = await advisoryService.addFollowUpMessage(
       req.params.id,
       req.user!.id,

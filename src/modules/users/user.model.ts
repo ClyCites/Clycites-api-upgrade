@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type UserRole =
+  | 'super_admin'
   | 'platform_admin'
   | 'admin'
   | 'farmer'
@@ -388,7 +389,7 @@ const UserSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['platform_admin', 'admin', 'farmer', 'buyer', 'expert', 'trader'],
+      enum: ['super_admin', 'platform_admin', 'admin', 'farmer', 'buyer', 'expert', 'trader'],
       default: 'farmer',
     },
     isEmailVerified: {

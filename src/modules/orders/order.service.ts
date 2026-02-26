@@ -27,6 +27,10 @@ interface CreateOrderData {
 }
 
 class OrderService {
+  private isAdminLike(role: string): boolean {
+    return ['admin', 'platform_admin', 'super_admin'].includes(role);
+  }
+
   async createOrder(data: CreateOrderData): Promise<IOrder> {
     // Get listing details
     const listing = await Listing.findById(data.listing).populate('product');
@@ -88,7 +92,7 @@ class OrderService {
     }
 
     // Check authorization
-    if (userRole !== 'admin' && order.buyer.toString() !== userId) {
+    if (!this.isAdminLike(userRole) && order.buyer.toString() !== userId) {
       const farmerDoc = await mongoose.model('Farmer').findOne({ user: userId });
       if (!farmerDoc || order.farmer.toString() !== farmerDoc._id.toString()) {
         throw new BadRequestError('You do not have access to this order');
@@ -175,7 +179,7 @@ class OrderService {
     }
 
     // Check authorization
-    if (userRole !== 'admin') {
+    if (!this.isAdminLike(userRole)) {
       const farmerDoc = await mongoose.model('Farmer').findOne({ user: userId });
       if (!farmerDoc || order.farmer.toString() !== farmerDoc._id.toString()) {
         throw new BadRequestError('Only the farmer or admin can update order status');
@@ -216,7 +220,7 @@ class OrderService {
 
     // Check authorization
     let cancelledBy: 'buyer' | 'farmer' | 'admin' = 'buyer';
-    if (userRole === 'admin') {
+    if (this.isAdminLike(userRole)) {
       cancelledBy = 'admin';
     } else if (order.buyer.toString() !== userId) {
       const farmerDoc = await mongoose.model('Farmer').findOne({ user: userId });
@@ -328,7 +332,7 @@ class OrderService {
     const order = await Order.findById(orderId).select('statusHistory buyer farmer status');
     if (!order) throw new NotFoundError('Order not found');
 
-    const isAdmin = ['admin', 'platform_admin'].includes(userRole);
+    const isAdmin = this.isAdminLike(userRole);
     if (!isAdmin && order.buyer.toString() !== userId) {
       const farmerDoc = await mongoose.model('Farmer').findOne({ user: userId });
       if (!farmerDoc || order.farmer.toString() !== farmerDoc._id.toString()) {

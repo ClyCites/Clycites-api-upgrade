@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authController from './auth.controller';
 import { authenticate } from '../../common/middleware/auth';
+import { requireSuperAdmin } from '../../common/middleware/superAdmin';
 import { validate } from '../../common/middleware/validate';
 import { authLimiter, sensitiveLimiter } from '../../common/middleware/rateLimiter';
 import {
@@ -13,6 +14,10 @@ import {
   refreshTokenValidator,
   updateMyProfileValidator,
   changePasswordValidator,
+  createSuperAdminTokenValidator,
+  revokeSuperAdminTokenValidator,
+  startImpersonationValidator,
+  revokeImpersonationValidator,
 } from './auth.validator';
 
 const router = Router();
@@ -92,6 +97,57 @@ router.get(
   '/me',
   authenticate,
   authController.getMe
+);
+
+// Super Admin controls
+router.post(
+  '/super-admin/tokens',
+  authenticate,
+  requireSuperAdmin(),
+  sensitiveLimiter,
+  validate(createSuperAdminTokenValidator),
+  authController.createScopedSuperAdminToken
+);
+
+router.get(
+  '/super-admin/tokens',
+  authenticate,
+  requireSuperAdmin(),
+  authController.listScopedSuperAdminTokens
+);
+
+router.delete(
+  '/super-admin/tokens/:grantId',
+  authenticate,
+  requireSuperAdmin(),
+  sensitiveLimiter,
+  validate(revokeSuperAdminTokenValidator),
+  authController.revokeScopedSuperAdminToken
+);
+
+router.post(
+  '/super-admin/impersonation',
+  authenticate,
+  requireSuperAdmin(),
+  sensitiveLimiter,
+  validate(startImpersonationValidator),
+  authController.startImpersonation
+);
+
+router.get(
+  '/super-admin/impersonation',
+  authenticate,
+  requireSuperAdmin(),
+  authController.listImpersonationSessions
+);
+
+router.delete(
+  '/super-admin/impersonation/:sessionId',
+  authenticate,
+  requireSuperAdmin(),
+  sensitiveLimiter,
+  validate(revokeImpersonationValidator),
+  authController.revokeImpersonation
 );
 
 export default router;

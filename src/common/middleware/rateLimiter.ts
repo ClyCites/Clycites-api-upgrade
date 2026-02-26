@@ -51,6 +51,7 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
       code: 'TOO_MANY_REQUESTS',
       message: 'Too many requests, please try again later',
     },
+    meta: {},
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -66,6 +67,9 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
         code: 'TOO_MANY_REQUESTS',
         message: 'Too many requests, please try again later',
       },
+      meta: {
+        requestId: req.requestId,
+      },
     });
   },
 });
@@ -80,6 +84,7 @@ export const authLimiter: RateLimitRequestHandler = rateLimit({
       code: 'TOO_MANY_AUTH_ATTEMPTS',
       message: 'Too many authentication attempts, please try again later',
     },
+    meta: {},
   },
   skipSuccessfulRequests: true,
   keyGenerator: (req: Request) => {
@@ -120,6 +125,9 @@ export const authLimiter: RateLimitRequestHandler = rateLimit({
         code: 'TOO_MANY_AUTH_ATTEMPTS',
         message: 'Too many authentication attempts. Your account has been temporarily locked for security reasons.',
       },
+      meta: {
+        requestId: req.requestId,
+      },
     });
   },
 });
@@ -135,6 +143,7 @@ export const ipLimiter: RateLimitRequestHandler = rateLimit({
       code: 'IP_RATE_LIMIT_EXCEEDED',
       message: 'Too many requests from this IP address',
     },
+    meta: {},
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -143,6 +152,9 @@ export const ipLimiter: RateLimitRequestHandler = rateLimit({
       error: {
         code: 'IP_RATE_LIMIT_EXCEEDED',
         message: 'Too many requests from this IP address. Please try again later.',
+      },
+      meta: {
+        requestId: req.requestId,
       },
     });
   },
@@ -158,6 +170,7 @@ export const createLimiter: RateLimitRequestHandler = rateLimit({
       code: 'TOO_MANY_REQUESTS',
       message: 'Too many creation requests, please try again later',
     },
+    meta: {},
   },
   keyGenerator: (req: Request) => {
     return req.user?.id || getClientIp(req);
@@ -174,6 +187,7 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
       code: 'SENSITIVE_OPERATION_LIMIT',
       message: 'Too many sensitive operations. Please try again later.',
     },
+    meta: {},
   },
   keyGenerator: (req: Request) => {
     return `sensitive:${req.user?.id || getClientIp(req)}`;
@@ -211,6 +225,9 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
       error: {
         code: 'SENSITIVE_OPERATION_LIMIT',
         message: 'Too many sensitive operations. Please try again later.',
+      },
+      meta: {
+        requestId: req.requestId,
       },
     });
   },

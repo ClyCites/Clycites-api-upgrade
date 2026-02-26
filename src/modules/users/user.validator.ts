@@ -1,6 +1,6 @@
 import { body, param, query } from 'express-validator';
 
-const userRoles = ['platform_admin', 'admin', 'farmer', 'buyer', 'expert', 'trader'];
+const userRoles = ['super_admin', 'platform_admin', 'admin', 'farmer', 'buyer', 'expert', 'trader'];
 const contactMethods = ['email', 'phone', 'sms', 'whatsapp', 'in_app'];
 const kycStatuses = ['not_started', 'pending', 'verified', 'rejected', 'expired'];
 const documentTypes = [

@@ -1,6 +1,9 @@
 import User, { IUser, IUserProfile, UserRole } from '../users/user.model';
 import OTP from './otp.model';
 import RefreshToken from './refreshToken.model';
+import ImpersonationSession from './impersonationSession.model';
+import SuperAdminGrant from './superAdminGrant.model';
+import { randomUUID } from 'crypto';
 import { PasswordUtil } from '../../common/utils/password';
 import { TokenUtil } from '../../common/utils/token';
 import { OTPUtil } from '../../common/utils/otp';
@@ -10,12 +13,15 @@ import notificationService from '../notifications/notification.service';
 import { NotificationType, NotificationChannel, NotificationPriority } from '../notifications/notification.types';
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
 import { AuditService } from '../audit';
+import Farmer from '../farmers/farmer.model';
+import { isSuperAdminRole } from '../../common/middleware/superAdmin';
 import {
   AppError,
   BadRequestError,
   UnauthorizedError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from '../../common/errors/AppError';
 
 interface RegisterData {
@@ -91,10 +97,42 @@ interface UpdateMyProfileData {
   profile?: Partial<IUserProfile>;
 }
 
+interface CreateSuperAdminTokenInput {
+  actorId: string;
+  scopes: string[];
+  reason: string;
+  expiresInMinutes?: number;
+}
+
+interface RevokeSuperAdminTokenInput {
+  actorId: string;
+  grantId: string;
+  reason: string;
+}
+
+interface StartImpersonationInput {
+  actorId: string;
+  targetUserId: string;
+  reason: string;
+  scopes?: string[];
+  ttlMinutes?: number;
+  context?: LoginContext;
+}
+
+interface RevokeImpersonationInput {
+  actorId: string;
+  sessionId: string;
+  reason: string;
+}
+
 class AuthService {
   private readonly MAX_FAILED_LOGIN_ATTEMPTS = 5;
   private readonly ACCOUNT_LOCK_DURATION_MS = 30 * 60 * 1000;
   private readonly MAX_ACTIVE_REFRESH_TOKENS = 10;
+  private readonly MAX_IMPERSONATION_TTL_MINUTES = 60;
+  private readonly DEFAULT_IMPERSONATION_TTL_MINUTES = 15;
+  private readonly MAX_SUPER_ADMIN_TOKEN_TTL_MINUTES = 30;
+  private readonly DEFAULT_SUPER_ADMIN_TOKEN_TTL_MINUTES = 10;
 
   async register(data: RegisterData, context: LoginContext = {}) {
     const normalizedEmail = this.normalizeEmail(data.email);
@@ -743,11 +781,312 @@ class AuthService {
     }).catch(err => logger.warn(`[AuthService] Password-changed notification failed: ${err}`));
   }
 
+  async createScopedSuperAdminToken(
+    input: CreateSuperAdminTokenInput,
+    context: LoginContext = {}
+  ) {
+    const actor = await this.assertSuperAdminActor(input.actorId);
+    const reason = input.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestError('A clear reason is required to create a Super Admin scoped token');
+    }
+
+    const scopes = Array.from(new Set(input.scopes.map((scope) => scope.trim()).filter(Boolean)));
+    if (scopes.length === 0) {
+      throw new BadRequestError('At least one scope is required');
+    }
+
+    const ttlMinutes = Math.min(
+      this.MAX_SUPER_ADMIN_TOKEN_TTL_MINUTES,
+      Math.max(1, input.expiresInMinutes || this.DEFAULT_SUPER_ADMIN_TOKEN_TTL_MINUTES)
+    );
+
+    const grantId = randomUUID();
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+    await SuperAdminGrant.create({
+      grantId,
+      actorUser: actor._id,
+      scopes,
+      reason,
+      expiresAt,
+      isActive: true,
+    });
+
+    const token = TokenUtil.generateScopedSuperAdminToken(
+      {
+        id: actor._id.toString(),
+        email: actor.email,
+        role: actor.role,
+        superAdminGrantId: grantId,
+        superAdminScopes: scopes,
+      },
+      `${ttlMinutes}m`
+    );
+
+    await AuditService.log({
+      action: 'super_admin.token_created',
+      resource: 'super_admin_grant',
+      resourceId: grantId,
+      userId: actor._id.toString(),
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      risk: 'critical',
+      details: {
+        metadata: {
+          actorId: actor._id.toString(),
+          targetId: actor._id.toString(),
+          action: 'super_admin.token_created',
+          reason,
+          timestamp: new Date().toISOString(),
+          scopes,
+          expiresAt: expiresAt.toISOString(),
+        },
+      },
+    });
+
+    return {
+      grantId,
+      token,
+      scopes,
+      expiresAt: expiresAt.toISOString(),
+      ttlMinutes,
+    };
+  }
+
+  async revokeScopedSuperAdminToken(
+    input: RevokeSuperAdminTokenInput,
+    context: LoginContext = {}
+  ): Promise<void> {
+    const actor = await this.assertSuperAdminActor(input.actorId);
+    const reason = input.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestError('A clear reason is required to revoke a Super Admin scoped token');
+    }
+
+    const grant = await SuperAdminGrant.findOne({
+      grantId: input.grantId,
+      isActive: true,
+    });
+
+    if (!grant) {
+      throw new NotFoundError('Super Admin scoped token not found or already revoked');
+    }
+
+    grant.isActive = false;
+    grant.revokedAt = new Date();
+    grant.revokedBy = actor._id;
+    grant.revokeReason = reason;
+    await grant.save();
+
+    await AuditService.log({
+      action: 'super_admin.token_revoked',
+      resource: 'super_admin_grant',
+      resourceId: grant.grantId,
+      userId: actor._id.toString(),
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      risk: 'critical',
+      details: {
+        metadata: {
+          actorId: actor._id.toString(),
+          targetId: grant.grantId,
+          action: 'super_admin.token_revoked',
+          reason,
+          timestamp: new Date().toISOString(),
+          scopes: grant.scopes,
+        },
+      },
+    });
+  }
+
+  async listScopedSuperAdminTokens(actorId: string) {
+    const actor = await this.assertSuperAdminActor(actorId);
+
+    const grants = await SuperAdminGrant.find({
+      actorUser: actor._id,
+    }).sort({ createdAt: -1 });
+
+    return grants.map((grant) => ({
+      grantId: grant.grantId,
+      scopes: grant.scopes,
+      reason: grant.reason,
+      isActive: grant.isActive && !grant.revokedAt && grant.expiresAt > new Date(),
+      expiresAt: grant.expiresAt,
+      revokedAt: grant.revokedAt,
+      revokeReason: grant.revokeReason,
+      createdAt: grant.createdAt,
+    }));
+  }
+
+  async startImpersonationSession(input: StartImpersonationInput) {
+    const actor = await this.assertSuperAdminActor(input.actorId);
+    const reason = input.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestError('A clear reason is required to start impersonation');
+    }
+
+    if (input.actorId === input.targetUserId) {
+      throw new BadRequestError('Super Admin cannot impersonate themselves');
+    }
+
+    const targetUser = await User.findOne({ _id: input.targetUserId, deletedAt: null });
+    if (!targetUser || !targetUser.isActive) {
+      throw new NotFoundError('Target user not found or inactive');
+    }
+
+    const ttlMinutes = Math.min(
+      this.MAX_IMPERSONATION_TTL_MINUTES,
+      Math.max(1, input.ttlMinutes || this.DEFAULT_IMPERSONATION_TTL_MINUTES)
+    );
+
+    const scopes = Array.from(new Set((input.scopes || []).map((scope) => scope.trim()).filter(Boolean)));
+    const sessionId = randomUUID();
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+    const farmerId = await this.resolveFarmerId(targetUser._id.toString());
+
+    await ImpersonationSession.create({
+      sessionId,
+      actorUser: actor._id,
+      targetUser: targetUser._id,
+      reason,
+      scopes,
+      startedAt: new Date(),
+      expiresAt,
+      isActive: true,
+      metadata: {
+        ipAddress: input.context?.ipAddress,
+        userAgent: input.context?.userAgent,
+      },
+    });
+
+    const accessToken = TokenUtil.generateImpersonationToken(
+      {
+        id: targetUser._id.toString(),
+        email: targetUser.email,
+        role: targetUser.role,
+        farmerId,
+        impersonationSessionId: sessionId,
+        impersonatedBy: actor._id.toString(),
+        impersonationReason: reason,
+        impersonationExpiresAt: expiresAt.toISOString(),
+        superAdminScopes: scopes,
+      },
+      `${ttlMinutes}m`
+    );
+
+    await AuditService.log({
+      action: 'super_admin.impersonation_started',
+      resource: 'user',
+      resourceId: targetUser._id.toString(),
+      userId: actor._id.toString(),
+      ipAddress: input.context?.ipAddress,
+      userAgent: input.context?.userAgent,
+      risk: 'critical',
+      details: {
+        metadata: {
+          actorId: actor._id.toString(),
+          targetId: targetUser._id.toString(),
+          action: 'super_admin.impersonation_started',
+          reason,
+          timestamp: new Date().toISOString(),
+          sessionId,
+          scopes,
+          expiresAt: expiresAt.toISOString(),
+        },
+      },
+    });
+
+    return {
+      sessionId,
+      accessToken,
+      expiresAt: expiresAt.toISOString(),
+      ttlMinutes,
+      impersonatedUser: {
+        id: targetUser._id.toString(),
+        email: targetUser.email,
+        role: targetUser.role,
+      },
+    };
+  }
+
+  async revokeImpersonationSession(
+    input: RevokeImpersonationInput,
+    context: LoginContext = {}
+  ): Promise<void> {
+    const actor = await this.assertSuperAdminActor(input.actorId);
+    const reason = input.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestError('A clear reason is required to revoke impersonation');
+    }
+
+    const session = await ImpersonationSession.findOne({
+      sessionId: input.sessionId,
+      isActive: true,
+    });
+
+    if (!session) {
+      throw new NotFoundError('Impersonation session not found or already revoked');
+    }
+
+    session.isActive = false;
+    session.revokedAt = new Date();
+    session.revokedBy = actor._id;
+    session.revokeReason = reason;
+    await session.save();
+
+    await AuditService.log({
+      action: 'super_admin.impersonation_revoked',
+      resource: 'impersonation_session',
+      resourceId: session.sessionId,
+      userId: actor._id.toString(),
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      risk: 'critical',
+      details: {
+        metadata: {
+          actorId: actor._id.toString(),
+          targetId: session.targetUser.toString(),
+          action: 'super_admin.impersonation_revoked',
+          reason,
+          timestamp: new Date().toISOString(),
+          sessionId: session.sessionId,
+        },
+      },
+    });
+  }
+
+  async listImpersonationSessions(actorId: string) {
+    const actor = await this.assertSuperAdminActor(actorId);
+
+    const sessions = await ImpersonationSession.find({
+      actorUser: actor._id,
+    })
+      .populate('targetUser', 'email firstName lastName role')
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    return sessions.map((session) => ({
+      sessionId: session.sessionId,
+      reason: session.reason,
+      scopes: session.scopes,
+      startedAt: session.startedAt,
+      expiresAt: session.expiresAt,
+      isActive: session.isActive && !session.revokedAt && session.expiresAt > new Date(),
+      revokedAt: session.revokedAt,
+      revokeReason: session.revokeReason,
+      targetUser: session.targetUser,
+    }));
+  }
+
   private async generateAndStoreTokenPair(user: IUser, deviceId?: string) {
+    const farmerId = await this.resolveFarmerId(user._id.toString());
+
     const tokens = TokenUtil.generateTokenPair({
       id: user._id.toString(),
       email: user.email,
       role: user.role,
+      farmerId,
     });
 
     await RefreshToken.create({
@@ -781,6 +1120,24 @@ class AuthService {
       { _id: { $in: staleTokenIds } },
       { isRevoked: true, revokedAt: new Date() }
     );
+  }
+
+  private async assertSuperAdminActor(actorId: string): Promise<IUser> {
+    const actor = await User.findOne({ _id: actorId, deletedAt: null });
+    if (!actor || !actor.isActive) {
+      throw new UnauthorizedError('Actor not found or inactive');
+    }
+
+    if (!isSuperAdminRole(actor.role)) {
+      throw new ForbiddenError('Only Super Admin users can perform this action');
+    }
+
+    return actor;
+  }
+
+  private async resolveFarmerId(userId: string): Promise<string | undefined> {
+    const farmer = await Farmer.findOne({ user: userId }).select('_id').lean();
+    return farmer?._id ? farmer._id.toString() : undefined;
   }
 
   private async recordFailedLogin(user: IUser, context: LoginContext): Promise<boolean> {
