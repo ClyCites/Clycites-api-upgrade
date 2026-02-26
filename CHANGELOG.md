@@ -15,12 +15,25 @@ All notable changes to this project are documented in this file.
 - Health readiness/version endpoints (`/api/v1/ready`, `/api/v1/version`).
 - Price freeze emergency guard via feature flags on mutating price endpoints.
 - New tests for Super Admin behavior, response metadata, idempotency, and feature-flag safety.
+- Enterprise API token platform:
+  - token models (`apiToken`, `apiAccessLog`)
+  - token lifecycle endpoints under `/api/v1/auth/tokens`
+  - one-time secret creation/rotation semantics
+  - scope and organization-boundary enforcement
+  - token usage stats and access logging
+- Logistics V1 module under `/api/v1/logistics`:
+  - collection points/warehouses
+  - shipment lifecycle + tracking updates
+  - proof-of-delivery upload/metadata (5MB limit with file type validation)
+- API token access logger middleware and token-aware authentication identity propagation.
+- Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
 ### Changed
 - Standard response helper now includes request metadata and impersonation metadata.
 - Authorization and permission middleware now use centralized Super Admin bypass checks.
 - Auth token/session validation now supports revocable Super Admin grant and impersonation session context.
 - OpenAPI components and path docs updated for admin/auth privileged controls.
+- OpenAPI now documents logistics routes and API token access patterns/scopes.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed

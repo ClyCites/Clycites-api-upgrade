@@ -1,4 +1,4 @@
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
 
 const selfRegisterRoles = ['farmer', 'buyer', 'expert', 'trader'];
 const contactMethods = ['email', 'phone', 'sms', 'whatsapp', 'in_app'];
@@ -467,6 +467,161 @@ export const revokeImpersonationValidator = [
     .trim()
     .isLength({ min: 10, max: 80 })
     .withMessage('sessionId is invalid'),
+  body('reason')
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+];
+
+const apiTokenTypes = ['personal', 'organization', 'super_admin'];
+const tokenStatuses = ['active', 'revoked', 'expired'];
+
+export const createApiTokenValidator = [
+  body('tokenType')
+    .optional()
+    .isIn(apiTokenTypes)
+    .withMessage(`tokenType must be one of: ${apiTokenTypes.join(', ')}`),
+  body('name')
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('name must be between 2 and 120 characters'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('description cannot exceed 500 characters'),
+  body('orgId')
+    .optional()
+    .isMongoId()
+    .withMessage('orgId must be a valid organization ID'),
+  body('scopes')
+    .isArray({ min: 1, max: 100 })
+    .withMessage('scopes must be an array with at least 1 and at most 100 values'),
+  body('scopes.*')
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 120 })
+    .withMessage('Each scope must be between 3 and 120 characters'),
+  body('rateLimit')
+    .optional()
+    .isObject()
+    .withMessage('rateLimit must be an object'),
+  body('rateLimit.requestsPerMinute')
+    .optional()
+    .isInt({ min: 1, max: 5000 })
+    .withMessage('rateLimit.requestsPerMinute must be between 1 and 5000')
+    .toInt(),
+  body('rateLimit.burst')
+    .optional()
+    .isInt({ min: 1, max: 10000 })
+    .withMessage('rateLimit.burst must be between 1 and 10000')
+    .toInt(),
+  body('expiresAt')
+    .optional()
+    .isISO8601()
+    .withMessage('expiresAt must be a valid ISO date-time'),
+  body('allowedIps')
+    .optional()
+    .isArray({ max: 50 })
+    .withMessage('allowedIps must be an array with at most 50 entries'),
+  body('allowedIps.*')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 80 })
+    .withMessage('Each allowed IP entry must be between 3 and 80 characters'),
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+];
+
+export const listApiTokensValidator = [
+  query('tokenType')
+    .optional()
+    .isIn(apiTokenTypes)
+    .withMessage(`tokenType must be one of: ${apiTokenTypes.join(', ')}`),
+  query('status')
+    .optional()
+    .isIn(tokenStatuses)
+    .withMessage(`status must be one of: ${tokenStatuses.join(', ')}`),
+  query('orgId')
+    .optional()
+    .isMongoId()
+    .withMessage('orgId must be a valid organization ID'),
+];
+
+export const updateApiTokenValidator = [
+  param('id')
+    .isMongoId()
+    .withMessage('id must be a valid token ID'),
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('name must be between 2 and 120 characters'),
+  body('description')
+    .optional()
+    .trim()
+    .isLength({ max: 500 })
+    .withMessage('description cannot exceed 500 characters'),
+  body('scopes')
+    .optional()
+    .isArray({ min: 1, max: 100 })
+    .withMessage('scopes must be an array with at least 1 and at most 100 values'),
+  body('scopes.*')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 120 })
+    .withMessage('Each scope must be between 3 and 120 characters'),
+  body('rateLimit')
+    .optional()
+    .isObject()
+    .withMessage('rateLimit must be an object'),
+  body('rateLimit.requestsPerMinute')
+    .optional()
+    .isInt({ min: 1, max: 5000 })
+    .withMessage('rateLimit.requestsPerMinute must be between 1 and 5000')
+    .toInt(),
+  body('rateLimit.burst')
+    .optional()
+    .isInt({ min: 1, max: 10000 })
+    .withMessage('rateLimit.burst must be between 1 and 10000')
+    .toInt(),
+  body('allowedIps')
+    .optional()
+    .isArray({ max: 50 })
+    .withMessage('allowedIps must be an array with at most 50 entries'),
+  body('allowedIps.*')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 80 })
+    .withMessage('Each allowed IP entry must be between 3 and 80 characters'),
+  body('expiresAt')
+    .optional({ nullable: true })
+    .custom((value) => value === null || typeof value === 'string')
+    .withMessage('expiresAt must be null or a valid ISO date-time')
+    .bail()
+    .custom((value) => value === null || !Number.isNaN(new Date(value).getTime()))
+    .withMessage('expiresAt must be a valid ISO date-time'),
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 1000 })
+    .withMessage('reason must be between 3 and 1000 characters'),
+];
+
+export const tokenIdParamValidator = [
+  param('id')
+    .isMongoId()
+    .withMessage('id must be a valid token ID'),
+];
+
+export const rotateOrRevokeApiTokenValidator = [
+  ...tokenIdParamValidator,
   body('reason')
     .trim()
     .isLength({ min: 3, max: 1000 })

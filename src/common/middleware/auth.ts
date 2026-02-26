@@ -1,21 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import config from '../config';
-import { UnauthorizedError } from '../errors/AppError';
+import { ForbiddenError, UnauthorizedError } from '../errors/AppError';
 import DeviceService from '../../modules/security/device.service';
 import MFAService from '../../modules/security/mfa.service';
 import AuditService from '../../modules/audit/audit.service';
 import { getClientIp } from './rateLimiter';
 import SuperAdminGrant from '../../modules/auth/superAdminGrant.model';
 import ImpersonationSession from '../../modules/auth/impersonationSession.model';
+import ApiTokenService from '../../modules/auth/apiToken.service';
+import { ApiTokenType, IApiTokenRateLimit } from '../../modules/auth/apiToken.model';
 
 export interface JwtPayload {
   id: string;
   email: string;
   role: string;
+  authType?: 'jwt' | 'api_token';
   farmerId?: string;
   permissions?: string[];
   deviceId?: string;
+  tokenId?: string;
+  tokenType?: ApiTokenType;
+  tokenScopes?: string[];
+  orgId?: string;
+  apiTokenRateLimit?: IApiTokenRateLimit;
   mfaVerified?: boolean;
   superAdminGrantId?: string;
   superAdminScopes?: string[];
@@ -29,6 +37,15 @@ export interface AuthRequest extends Request {
   user?: JwtPayload;
   device?: any;
   requestId?: string;
+  apiToken?: {
+    id: string;
+    tokenId: string;
+    tokenType: ApiTokenType;
+    tokenPrefix: string;
+    scopes: string[];
+    orgId?: string;
+    rateLimit: IApiTokenRateLimit;
+  };
   impersonation?: {
     sessionId: string;
     actorId: string;
@@ -47,6 +64,15 @@ declare module 'express-serve-static-core' {
     user?: JwtPayload;
     device?: any;
     requestId?: string;
+    apiToken?: {
+      id: string;
+      tokenId: string;
+      tokenType: ApiTokenType;
+      tokenPrefix: string;
+      scopes: string[];
+      orgId?: string;
+      rateLimit: IApiTokenRateLimit;
+    };
     impersonation?: {
       sessionId: string;
       actorId: string;
@@ -60,6 +86,8 @@ declare module 'express-serve-static-core' {
     };
   }
 }
+
+const isJwtLikeToken = (token: string): boolean => token.split('.').length === 3;
 
 const getBearerToken = (req: Request): string | undefined => {
   const authHeader = req.headers.authorization;
@@ -134,8 +162,73 @@ const decodeAndValidateToken = async (token: string, req: Request): Promise<JwtP
 
   await validateImpersonationSession(decoded, req);
   await validateSuperAdminGrant(decoded, req);
+  decoded.authType = 'jwt';
 
   return decoded;
+};
+
+const authenticateApiToken = async (token: string, req: Request): Promise<JwtPayload> => {
+  const context = ApiTokenService.getRequestContext(req);
+  const authenticated = await ApiTokenService.authenticateApiToken({
+    rawToken: token,
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent,
+  });
+
+  ApiTokenService.enforceOrgBoundary(authenticated.identity, {
+    headers: req.headers as Record<string, unknown>,
+    body: req.body,
+    params: req.params as Record<string, unknown>,
+  });
+  ApiTokenService.enforceTokenScopes(
+    authenticated.identity.tokenScopes,
+    req.method,
+    req.originalUrl
+  );
+
+  req.apiToken = {
+    id: authenticated.token._id.toString(),
+    tokenId: authenticated.token.tokenId,
+    tokenType: authenticated.token.tokenType,
+    tokenPrefix: authenticated.token.tokenPrefix,
+    scopes: authenticated.identity.tokenScopes,
+    orgId: authenticated.identity.orgId,
+    rateLimit: authenticated.token.rateLimit,
+  };
+
+  return {
+    id: authenticated.identity.id,
+    email: authenticated.identity.email,
+    role: authenticated.identity.role,
+    authType: 'api_token',
+    permissions: authenticated.identity.permissions,
+    tokenId: authenticated.identity.tokenId,
+    tokenType: authenticated.identity.tokenType,
+    tokenScopes: authenticated.identity.tokenScopes,
+    orgId: authenticated.identity.orgId,
+    apiTokenRateLimit: authenticated.token.rateLimit,
+    superAdminScopes: authenticated.identity.superAdminScopes,
+  };
+};
+
+const resolveAuthenticatedIdentity = async (token: string, req: Request): Promise<JwtPayload> => {
+  if (isJwtLikeToken(token)) {
+    try {
+      return await decodeAndValidateToken(token, req);
+    } catch (error) {
+      if (
+        error instanceof jwt.JsonWebTokenError ||
+        error instanceof jwt.TokenExpiredError ||
+        error instanceof UnauthorizedError
+      ) {
+        // Fall through to API token authentication if JWT validation fails.
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  return authenticateApiToken(token, req);
 };
 
 const trackDeviceActivity = async (req: Request, userId: string): Promise<void> => {
@@ -169,10 +262,12 @@ export const authenticate = async (
       throw new UnauthorizedError('No token provided');
     }
 
-    const decoded = await decodeAndValidateToken(token, req);
+    const decoded = await resolveAuthenticatedIdentity(token, req);
     req.user = decoded;
 
-    await trackDeviceActivity(req, decoded.id);
+    if (decoded.authType !== 'api_token') {
+      await trackDeviceActivity(req, decoded.id);
+    }
 
     next();
   } catch (error) {
@@ -197,9 +292,11 @@ export const optionalAuth = async (
   try {
     const token = getBearerToken(req);
     if (token) {
-      const decoded = await decodeAndValidateToken(token, req);
+      const decoded = await resolveAuthenticatedIdentity(token, req);
       req.user = decoded;
-      await trackDeviceActivity(req, decoded.id);
+      if (decoded.authType !== 'api_token') {
+        await trackDeviceActivity(req, decoded.id);
+      }
     }
 
     next();
@@ -220,6 +317,10 @@ export const requireMFA = async (
   try {
     if (!req.user) {
       throw new UnauthorizedError('Authentication required');
+    }
+
+    if (req.user.authType === 'api_token') {
+      throw new ForbiddenError('MFA verification is only available for session-based authentication');
     }
 
     // Check if MFA is verified in token

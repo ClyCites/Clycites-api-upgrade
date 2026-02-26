@@ -12,6 +12,7 @@ import { apiLimiter } from './common/middleware/rateLimiter';
 import { requestContext } from './common/middleware/requestContext';
 import { superAdminAudit } from './common/middleware/superAdminAudit';
 import { maintenanceModeGuard } from './common/middleware/maintenanceMode';
+import { apiTokenAccessLogger } from './common/middleware/apiTokenAccess';
 import routes from './routes';
 import { openApiSpec } from './common/docs';
 
@@ -249,6 +250,7 @@ if (config.app.env === 'development') {
 app.use(apiLimiter);
 app.use(superAdminAudit);
 app.use(maintenanceModeGuard);
+app.use(apiTokenAccessLogger);
 
 // Routes
 app.use(routes);

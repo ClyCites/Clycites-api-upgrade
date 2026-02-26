@@ -178,6 +178,205 @@ export const authPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/auth/tokens': {
+    get: {
+      tags: ['Authentication'],
+      summary: 'List API tokens',
+      description: 'Returns API token metadata (masked). Token secret values are never returned.',
+      operationId: 'listApiTokens',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'tokenType', in: 'query', schema: { type: 'string', enum: ['personal', 'organization', 'super_admin'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'revoked', 'expired'] } },
+        { name: 'orgId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+      ],
+      responses: {
+        200: { description: 'API tokens retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    post: {
+      tags: ['Authentication'],
+      summary: 'Create API token',
+      description:
+        'Creates personal, organization, or super-admin API token. The token secret is returned only once.',
+      operationId: 'createApiToken',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['name', 'scopes'],
+              properties: {
+                tokenType: {
+                  type: 'string',
+                  enum: ['personal', 'organization', 'super_admin'],
+                  default: 'personal',
+                },
+                name: { type: 'string', minLength: 2, maxLength: 120 },
+                description: { type: 'string', maxLength: 500 },
+                orgId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+                scopes: { type: 'array', items: { type: 'string' } },
+                rateLimit: {
+                  type: 'object',
+                  properties: {
+                    requestsPerMinute: { type: 'integer', minimum: 1, maximum: 5000 },
+                    burst: { type: 'integer', minimum: 1, maximum: 10000 },
+                  },
+                },
+                expiresAt: { type: 'string', format: 'date-time' },
+                allowedIps: { type: 'array', items: { type: 'string' } },
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'API token created (secret returned once).' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/tokens/{id}': {
+    get: {
+      tags: ['Authentication'],
+      summary: 'Get API token metadata',
+      operationId: 'getApiTokenById',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      responses: {
+        200: { description: 'API token retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Authentication'],
+      summary: 'Update API token metadata and policies',
+      operationId: 'updateApiToken',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', minLength: 2, maxLength: 120 },
+                description: { type: 'string', maxLength: 500 },
+                scopes: { type: 'array', items: { type: 'string' } },
+                rateLimit: {
+                  type: 'object',
+                  properties: {
+                    requestsPerMinute: { type: 'integer', minimum: 1, maximum: 5000 },
+                    burst: { type: 'integer', minimum: 1, maximum: 10000 },
+                  },
+                },
+                allowedIps: { type: 'array', items: { type: 'string' } },
+                expiresAt: { oneOf: [{ type: 'string', format: 'date-time' }, { type: 'null' }] },
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'API token updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/tokens/{id}/rotate': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'Rotate API token secret',
+      description: 'Revokes previous secret and returns a new secret once.',
+      operationId: 'rotateApiToken',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: {
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'API token rotated (new secret returned once).' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/tokens/{id}/revoke': {
+    post: {
+      tags: ['Authentication'],
+      summary: 'Revoke API token',
+      operationId: 'revokeApiToken',
+      security: [{ BearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: {
+                reason: { type: 'string', minLength: 3, maxLength: 1000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'API token revoked.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/auth/tokens/{id}/usage': {
+    get: {
+      tags: ['Authentication'],
+      summary: 'Get API token usage',
+      operationId: 'getApiTokenUsage',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'sinceDays', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 90, default: 7 } },
+      ],
+      responses: {
+        200: { description: 'Usage metrics retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
   '/api/v1/auth/super-admin/tokens': {
     get: {
       tags: ['Authentication', 'Admin'],

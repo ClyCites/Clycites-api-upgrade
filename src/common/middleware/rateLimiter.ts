@@ -1,6 +1,7 @@
 import rateLimit, { RateLimitRequestHandler } from 'express-rate-limit';
 // import RedisStore from 'rate-limit-redis'; // Uncomment when Redis is configured
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import config from '../config';
 import SecurityEvent from '../../modules/security/securityEvent.model';
 
@@ -12,6 +13,52 @@ const getClientIp = (req: Request): string => {
     req.socket.remoteAddress ||
     '0.0.0.0'
   );
+};
+
+const getRateLimitIdentityKey = (req: Request): string => {
+  if (req.user?.tokenId) {
+    const orgPart = req.user.orgId ? `:org:${req.user.orgId}` : '';
+    return `token:${req.user.tokenId}${orgPart}`;
+  }
+
+  if (req.user?.id) {
+    return `user:${req.user.id}`;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.substring(7).trim();
+
+    if (bearer.startsWith('ct_')) {
+      const tokenPrefix = bearer.split('.')[0];
+      if (tokenPrefix) {
+        return `token:${tokenPrefix}`;
+      }
+    }
+
+    if (bearer.split('.').length === 3) {
+      try {
+        const decoded = jwt.decode(bearer) as {
+          id?: string;
+          tokenId?: string;
+          orgId?: string;
+        } | null;
+
+        if (decoded?.tokenId) {
+          const orgPart = decoded.orgId ? `:org:${decoded.orgId}` : '';
+          return `token:${decoded.tokenId}${orgPart}`;
+        }
+
+        if (decoded?.id) {
+          return `user:${decoded.id}`;
+        }
+      } catch {
+        // Ignore decoding errors and fall back to IP.
+      }
+    }
+  }
+
+  return `ip:${getClientIp(req)}`;
 };
 
 // Helper to log rate limit violation
@@ -44,7 +91,7 @@ const logRateLimitViolation = async (req: Request) => {
 // General API rate limiter
 export const apiLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: (req: Request) => req.user?.apiTokenRateLimit?.requestsPerMinute || config.rateLimit.maxRequests,
   message: {
     success: false,
     error: {
@@ -56,8 +103,8 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
-    // Rate limit per user if authenticated, otherwise per IP
-    return req.user?.id || getClientIp(req);
+    // Rate limit per token, then per user, otherwise per IP.
+    return getRateLimitIdentityKey(req);
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -173,7 +220,7 @@ export const createLimiter: RateLimitRequestHandler = rateLimit({
     meta: {},
   },
   keyGenerator: (req: Request) => {
-    return req.user?.id || getClientIp(req);
+    return `create:${getRateLimitIdentityKey(req)}`;
   },
 });
 
@@ -190,7 +237,7 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
     meta: {},
   },
   keyGenerator: (req: Request) => {
-    return `sensitive:${req.user?.id || getClientIp(req)}`;
+    return `sensitive:${getRateLimitIdentityKey(req)}`;
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -235,4 +282,5 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
 
 // Export IP getter for use in other modules
 export { getClientIp };
+export { getRateLimitIdentityKey };
 

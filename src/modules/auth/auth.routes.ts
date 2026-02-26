@@ -18,6 +18,11 @@ import {
   revokeSuperAdminTokenValidator,
   startImpersonationValidator,
   revokeImpersonationValidator,
+  createApiTokenValidator,
+  listApiTokensValidator,
+  updateApiTokenValidator,
+  tokenIdParamValidator,
+  rotateOrRevokeApiTokenValidator,
 } from './auth.validator';
 
 const router = Router();
@@ -148,6 +153,60 @@ router.delete(
   sensitiveLimiter,
   validate(revokeImpersonationValidator),
   authController.revokeImpersonation
+);
+
+// API token lifecycle
+router.post(
+  '/tokens',
+  authenticate,
+  sensitiveLimiter,
+  validate(createApiTokenValidator),
+  authController.createApiToken
+);
+
+router.get(
+  '/tokens',
+  authenticate,
+  validate(listApiTokensValidator),
+  authController.listApiTokens
+);
+
+router.get(
+  '/tokens/:id',
+  authenticate,
+  validate(tokenIdParamValidator),
+  authController.getApiTokenById
+);
+
+router.patch(
+  '/tokens/:id',
+  authenticate,
+  sensitiveLimiter,
+  validate(updateApiTokenValidator),
+  authController.updateApiToken
+);
+
+router.post(
+  '/tokens/:id/rotate',
+  authenticate,
+  sensitiveLimiter,
+  validate(rotateOrRevokeApiTokenValidator),
+  authController.rotateApiToken
+);
+
+router.post(
+  '/tokens/:id/revoke',
+  authenticate,
+  sensitiveLimiter,
+  validate(rotateOrRevokeApiTokenValidator),
+  authController.revokeApiToken
+);
+
+router.get(
+  '/tokens/:id/usage',
+  authenticate,
+  validate(tokenIdParamValidator),
+  authController.getApiTokenUsage
 );
 
 export default router;

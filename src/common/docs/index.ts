@@ -24,6 +24,7 @@ import { marketIntelligencePaths } from './paths/marketIntelligence.paths';
 import { organizationsPaths } from './paths/organizations.paths';
 import { offersPaths } from './paths/offers.paths';
 import { adminPaths } from './paths/admin.paths';
+import { logisticsPaths } from './paths/logistics.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -40,7 +41,9 @@ This OpenAPI specification is the **single source of truth** for all REST API en
 
 ## Authentication
 
-Most endpoints require a JWT Bearer token obtained from \`POST /api/v1/auth/login\`.
+Most endpoints require a Bearer token. Supported token classes:
+- JWT access token obtained from \`POST /api/v1/auth/login\`
+- API token secret obtained from \`POST /api/v1/auth/tokens\` (returned once)
 
 \`\`\`http
 Authorization: Bearer <accessToken>
@@ -123,6 +126,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     { name: 'Market Intelligence', description: 'AI-powered market insights, price recommendations, and intelligence alerts.' },
     { name: 'Audit', description: 'Audit log access — user activity, org events, suspicious activities.' },
     { name: 'Admin', description: 'Platform administration operations (require elevated roles).' },
+    { name: 'Logistics', description: 'Collection points, shipment lifecycle, tracking, and proof of delivery.' },
   ],
 
   paths: {
@@ -150,6 +154,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...organizationsPaths,
     ...offersPaths,
     ...adminPaths,
+    ...logisticsPaths,
   } as OpenAPIV3_1.Document['paths'],
 
   components,

@@ -26,6 +26,7 @@ import organizationRoutes from './modules/organizations/organization.routes';
 import offerRoutes from './modules/offers/offer.routes';
 import userRoutes from './modules/users/user.routes';
 import platformControlRoutes from './modules/admin/platformControl.routes';
+import logisticsRoutes from './modules/logistics/logistics.routes';
 import { ResponseHandler } from './common/utils/response';
 import config from './common/config';
 
@@ -61,6 +62,7 @@ router.use(`${API_VERSION}/organizations`, organizationRoutes);   // Organizatio
 router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace Offers & Negotiation
 router.use(`${API_VERSION}/users`, userRoutes);                   // Admin User Management
 router.use(`${API_VERSION}/admin`, platformControlRoutes);        // Platform Controls
+router.use(`${API_VERSION}/logistics`, logisticsRoutes);          // Logistics & Distribution
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {

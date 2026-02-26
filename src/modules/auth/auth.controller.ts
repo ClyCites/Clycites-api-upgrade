@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import AuthService from './auth.service';
+import ApiTokenService from './apiToken.service';
 import { ResponseHandler } from '../../common/utils/response';
 import { BadRequestError } from '../../common/errors/AppError';
 import { getClientIp } from '../../common/middleware/rateLimiter';
@@ -257,6 +258,135 @@ export class AuthController {
       const actorId = this.getActorId(req);
       const sessions = await this.authService.listImpersonationSessions(actorId);
       ResponseHandler.success(res, sessions, 'Impersonation sessions retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  createApiToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const result = await ApiTokenService.createToken(
+        {
+          actorId,
+          tokenType: req.body.tokenType || 'personal',
+          name: req.body.name,
+          description: req.body.description,
+          orgId: req.body.orgId,
+          scopes: this.toScopes(req.body.scopes),
+          rateLimit: req.body.rateLimit,
+          expiresAt: req.body.expiresAt,
+          allowedIps: Array.isArray(req.body.allowedIps)
+            ? req.body.allowedIps.map((value: unknown) => String(value))
+            : undefined,
+          reason: req.body.reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.created(res, result, 'API token created');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listApiTokens = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const tokens = await ApiTokenService.listTokens(actorId, {
+        tokenType: req.query.tokenType as 'personal' | 'organization' | 'super_admin' | undefined,
+        status: req.query.status as 'active' | 'revoked' | 'expired' | undefined,
+        orgId: req.query.orgId as string | undefined,
+      });
+
+      ResponseHandler.success(res, tokens, 'API tokens retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getApiTokenById = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const token = await ApiTokenService.getTokenById(actorId, req.params.id);
+      ResponseHandler.success(res, token, 'API token retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateApiToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const token = await ApiTokenService.updateToken(
+        {
+          actorId,
+          tokenId: req.params.id,
+          name: req.body.name,
+          description: req.body.description,
+          scopes: Array.isArray(req.body.scopes)
+            ? req.body.scopes.map((value: unknown) => String(value))
+            : undefined,
+          rateLimit: req.body.rateLimit,
+          allowedIps: Array.isArray(req.body.allowedIps)
+            ? req.body.allowedIps.map((value: unknown) => String(value))
+            : undefined,
+          expiresAt: req.body.expiresAt,
+          reason: req.body.reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.success(res, token, 'API token updated');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  rotateApiToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const result = await ApiTokenService.rotateToken(
+        {
+          actorId,
+          tokenId: req.params.id,
+          reason: req.body.reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.success(res, result, 'API token rotated');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  revokeApiToken = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const token = await ApiTokenService.revokeToken(
+        {
+          actorId,
+          tokenId: req.params.id,
+          reason: req.body.reason,
+        },
+        this.getRequestContext(req)
+      );
+
+      ResponseHandler.success(res, token, 'API token revoked');
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getApiTokenUsage = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actorId = this.getActorId(req);
+      const usage = await ApiTokenService.getTokenUsage(actorId, req.params.id, {
+        sinceDays: req.query.sinceDays ? Number(req.query.sinceDays) : undefined,
+      });
+
+      ResponseHandler.success(res, usage, 'API token usage retrieved');
     } catch (error) {
       next(error);
     }

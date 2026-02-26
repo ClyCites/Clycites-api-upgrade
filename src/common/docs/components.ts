@@ -11,7 +11,13 @@ export const securitySchemes: Record<string, OpenAPIV3_1.SecuritySchemeObject> =
     type: 'http',
     scheme: 'bearer',
     bearerFormat: 'JWT',
-    description: 'JWT access token issued on login. Expires in 15 minutes.',
+    description: 'JWT access token issued on login, or API token secret issued from /api/v1/auth/tokens.',
+  },
+  ApiTokenAuth: {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'API_TOKEN',
+    description: 'Hashed API token secret. Returned once at creation/rotation and used as Authorization Bearer.',
   },
   RefreshToken: {
     type: 'apiKey',
@@ -240,6 +246,71 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       },
       createdAt: isoDate,
       updatedAt: isoDate,
+    },
+  },
+
+  ApiToken: {
+    type: 'object',
+    properties: {
+      id: mongoId,
+      tokenId: { type: 'string', example: '4d85f5f3-6250-4d13-8bf8-754df2de6fb5' },
+      tokenType: { type: 'string', enum: ['personal', 'organization', 'super_admin'] },
+      name: { type: 'string', example: 'Mobile App Token' },
+      description: { type: 'string' },
+      tokenPrefix: { type: 'string', example: 'ct_a1b2c3d4' },
+      createdBy: mongoId,
+      orgId: mongoId,
+      scopes: {
+        type: 'array',
+        items: { type: 'string' },
+        example: ['orders:read', 'orders:write', 'pricing:read'],
+      },
+      rateLimit: {
+        type: 'object',
+        properties: {
+          requestsPerMinute: { type: 'integer', example: 120 },
+          burst: { type: 'integer', example: 240 },
+        },
+      },
+      status: { type: 'string', enum: ['active', 'revoked', 'expired'] },
+      expiresAt: isoDate,
+      allowedIps: { type: 'array', items: { type: 'string' } },
+      lastUsedAt: isoDate,
+      lastUsedIp: { type: 'string', example: '41.210.148.1' },
+      revokedAt: isoDate,
+      revokeReason: { type: 'string' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  ApiTokenUsage: {
+    type: 'object',
+    properties: {
+      token: { $ref: '#/components/schemas/ApiToken' },
+      summary: {
+        type: 'object',
+        properties: {
+          totalRequests: { type: 'integer' },
+          successResponses: { type: 'integer' },
+          clientErrors: { type: 'integer' },
+          serverErrors: { type: 'integer' },
+        },
+      },
+      since: isoDate,
+      days: { type: 'integer' },
+      requestsByDay: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            date: { type: 'string', example: '2026-02-26' },
+            count: { type: 'integer' },
+          },
+        },
+      },
+      lastUsedAt: isoDate,
+      lastUsedIp: { type: 'string' },
     },
   },
 
