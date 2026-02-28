@@ -1,8 +1,37 @@
-
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
 const ok = (desc: string, data?: object) => ({
-  200: { description: desc, content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, ...(data ? [{ type: 'object', properties: { data } }] : [])] } } } },
+  200: {
+    description: desc,
+    content: {
+      'application/json': {
+        schema: {
+          allOf: [
+            { $ref: '#/components/schemas/SuccessResponse' },
+            ...(data ? [{ type: 'object', properties: { data } }] : []),
+          ],
+        },
+      },
+    },
+  },
+  400: { $ref: '#/components/responses/ValidationError' },
+  401: { $ref: '#/components/responses/Unauthorized' },
+  500: { $ref: '#/components/responses/InternalError' },
+});
+const created = (desc: string, data: object) => ({
+  201: {
+    description: desc,
+    content: {
+      'application/json': {
+        schema: {
+          allOf: [
+            { $ref: '#/components/schemas/SuccessResponse' },
+            { type: 'object', properties: { data } },
+          ],
+        },
+      },
+    },
+  },
   400: { $ref: '#/components/responses/ValidationError' },
   401: { $ref: '#/components/responses/Unauthorized' },
   500: { $ref: '#/components/responses/InternalError' },
@@ -11,36 +40,79 @@ const paged = (desc: string, itemRef: string) => ok(desc, { type: 'array', items
 const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
-const farmerIdParam = { name: 'farmerId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
-const farmIdParam = { name: 'farmId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
-const profileIdParam = { name: 'id', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
+const farmerIdParam = {
+  name: 'farmerId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
+const farmIdParam = {
+  name: 'farmId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
+const plotIdParam = {
+  name: 'plotId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
+const cropIdParam = {
+  name: 'cropId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
+const inputIdParam = {
+  name: 'inputId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
+const profileIdParam = {
+  name: 'id',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
 
 export const farmersPaths: Record<string, unknown> = {
-
   // == Enterprise Farmer Profiles ============================================
 
   '/api/v1/farmers/profiles': {
     post: {
       tags: ['Farmers'],
       summary: 'Create farmer profile',
-      description: 'Create a new farmer profile for the authenticated user.',
       operationId: 'createFarmerProfile',
       security: auth,
       requestBody: r({ $ref: '#/components/schemas/FarmerCreateRequest' }),
       responses: {
-        201: { description: 'Farmer profile created.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/FarmerProfile' } } }] } } } },
-        400: { $ref: '#/components/responses/ValidationError' },
-        401: { $ref: '#/components/responses/Unauthorized' },
+        ...created('Farmer profile created.', { $ref: '#/components/schemas/FarmerProfile' }),
         409: { description: 'Farmer profile already exists.' },
       },
     },
     get: {
       tags: ['Farmers'],
       summary: 'List farmer profiles',
-      description: 'Returns paginated farmer profiles. Requires admin or org:manager role.',
       operationId: 'listFarmerProfiles',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'region', in: 'query', schema: { type: 'string' } }, { name: 'verified', in: 'query', schema: { type: 'boolean' } }, { name: 'search', in: 'query', schema: { type: 'string' } }],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'farmerType', in: 'query', schema: { type: 'string', enum: ['individual', 'cooperative_member', 'enterprise_grower', 'contract_farmer'] } },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+        { name: 'district', in: 'query', schema: { type: 'string' } },
+        {
+          name: 'verificationStatus',
+          in: 'query',
+          schema: { type: 'string', enum: ['draft', 'submitted', 'verified', 'rejected'] },
+          description: 'Preferred lifecycle filter. If provided with verified, verificationStatus takes precedence.',
+        },
+        { name: 'verified', in: 'query', schema: { type: 'boolean' }, description: 'Legacy compatibility filter.' },
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'search', in: 'query', schema: { type: 'string' } },
+      ],
       responses: { ...paged('Farmer profiles list.', '#/components/schemas/FarmerProfile') },
     },
   },
@@ -51,7 +123,10 @@ export const farmersPaths: Record<string, unknown> = {
       summary: 'Get my farmer profile',
       operationId: 'getMyFarmerProfile',
       security: auth,
-      responses: { ...ok('My farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }), 404: { $ref: '#/components/responses/NotFound' } },
+      responses: {
+        ...ok('My farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }),
+        404: { $ref: '#/components/responses/NotFound' },
+      },
     },
   },
 
@@ -62,26 +137,34 @@ export const farmersPaths: Record<string, unknown> = {
       operationId: 'getFarmerProfile',
       security: auth,
       parameters: [profileIdParam],
-      responses: { ...ok('Farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }), 404: { $ref: '#/components/responses/NotFound' } },
+      responses: {
+        ...ok('Farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
     },
     patch: {
       tags: ['Farmers'],
       summary: 'Update farmer profile',
-      description: 'Owner or admin can update the profile.',
       operationId: 'updateFarmerProfile',
       security: auth,
       parameters: [profileIdParam],
       requestBody: r({ $ref: '#/components/schemas/FarmerCreateRequest' }),
-      responses: { ...ok('Updated farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }), 403: { $ref: '#/components/responses/Forbidden' } },
+      responses: {
+        ...ok('Updated farmer profile.', { $ref: '#/components/schemas/FarmerProfile' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
     delete: {
-      tags: ['Farmers', 'Admin'],
+      tags: ['Farmers'],
       summary: 'Soft-delete farmer profile',
-      description: 'Requires platform_admin role.',
       operationId: 'deleteFarmerProfile',
       security: auth,
       parameters: [profileIdParam],
-      responses: { 200: { description: 'Profile deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      responses: {
+        ...ok('Farmer profile deleted.', { type: 'null' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
@@ -89,12 +172,25 @@ export const farmersPaths: Record<string, unknown> = {
     post: {
       tags: ['Farmers'],
       summary: 'Submit profile for verification',
-      description: 'Profile owner submits their profile for admin verification.',
       operationId: 'submitFarmerProfileForVerification',
       security: auth,
       parameters: [profileIdParam],
-      requestBody: r({ type: 'object', properties: { notes: { type: 'string' } } }),
-      responses: { 200: { description: 'Submitted for verification.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      requestBody: {
+        required: false,
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/FarmerVerificationSubmitRequest' },
+            examples: {
+              default: { value: { notes: 'Please review KYC documents.' } },
+            },
+          },
+        },
+      },
+      responses: {
+        ...ok('Submitted for verification.', { $ref: '#/components/schemas/FarmerProfile' }),
+        400: { $ref: '#/components/responses/ValidationError' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
@@ -102,16 +198,30 @@ export const farmersPaths: Record<string, unknown> = {
     post: {
       tags: ['Farmers', 'Admin'],
       summary: 'Verify or reject farmer profile',
-      description: 'Requires platform_admin or verifier role.',
       operationId: 'verifyFarmerProfile',
       security: auth,
       parameters: [profileIdParam],
-      requestBody: r({ type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['verified', 'rejected'] }, reason: { type: 'string' } } }),
-      responses: { 200: { description: 'Verification decision applied.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      requestBody: {
+        ...r({ $ref: '#/components/schemas/FarmerVerificationDecisionRequest' }),
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/FarmerVerificationDecisionRequest' },
+            examples: {
+              verify: { value: { status: 'verified', reason: 'Identity validated.' } },
+              reject: { value: { status: 'rejected', reason: 'Mismatched ID information.' } },
+            },
+          },
+        },
+      },
+      responses: {
+        ...ok('Verification decision applied.', { $ref: '#/components/schemas/FarmerProfile' }),
+        400: { $ref: '#/components/responses/ValidationError' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
-  // == Farm Management ========================================================
+  // == Farms ================================================================
 
   '/api/v1/farmers/{farmerId}/farms': {
     post: {
@@ -120,42 +230,235 @@ export const farmersPaths: Record<string, unknown> = {
       operationId: 'createFarmerFarm',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', required: ['name', 'location', 'sizeInHectares'], properties: { name: { type: 'string' }, location: { type: 'object', properties: { region: { type: 'string' }, district: { type: 'string' }, coordinates: { type: 'object', properties: { lat: { type: 'number' }, lng: { type: 'number' } } } } }, sizeInHectares: { type: 'number', minimum: 0 }, farmType: { type: 'string', enum: ['crop', 'livestock', 'mixed', 'aquaculture', 'agroforestry'] } } }),
-      responses: { 201: { description: 'Farm created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      requestBody: r({
+        type: 'object',
+        required: ['farmName', 'totalSize', 'ownershipType', 'location'],
+        properties: {
+          farmName: { type: 'string' },
+          totalSize: { type: 'number', minimum: 0.01 },
+          sizeUnit: { type: 'string', enum: ['acres', 'hectares', 'square_meters'] },
+          ownershipType: { type: 'string', enum: ['owned', 'leased', 'communal', 'family_land', 'rented', 'sharecropping'] },
+          location: {
+            type: 'object',
+            properties: {
+              country: { type: 'string' },
+              region: { type: 'string' },
+              district: { type: 'string' },
+            },
+          },
+        },
+      }),
+      responses: { ...created('Farm created.', { $ref: '#/components/schemas/FarmerFarm' }) },
     },
     get: {
       tags: ['Farmers'],
       summary: 'Get farms for a farmer',
       operationId: 'getFarmerFarms',
       security: auth,
-      parameters: [farmerIdParam, pageParam, limitParam],
-      responses: { 200: { description: 'Farm list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      parameters: [farmerIdParam],
+      responses: { ...paged('Farmer farms.', '#/components/schemas/FarmerFarm') },
     },
   },
 
   '/api/v1/farmers/farms/{farmId}': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'Get farm by ID',
+      operationId: 'getFarmById',
+      security: auth,
+      parameters: [farmIdParam],
+      responses: {
+        ...ok('Farm retrieved.', { $ref: '#/components/schemas/FarmerFarm' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
     patch: {
       tags: ['Farmers'],
       summary: 'Update farm details',
       operationId: 'updateFarm',
       security: auth,
       parameters: [farmIdParam],
-      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, sizeInHectares: { type: 'number' }, farmType: { type: 'string' } } }),
-      responses: { 200: { description: 'Farm updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      requestBody: r({
+        type: 'object',
+        properties: {
+          farmName: { type: 'string' },
+          totalSize: { type: 'number', minimum: 0.01 },
+          operationalStatus: { type: 'string', enum: ['active', 'inactive', 'fallow', 'under_development', 'abandoned'] },
+        },
+      }),
+      responses: {
+        ...ok('Farm updated.', { $ref: '#/components/schemas/FarmerFarm' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    delete: {
+      tags: ['Farmers'],
+      summary: 'Soft delete farm',
+      operationId: 'deleteFarm',
+      security: auth,
+      parameters: [farmIdParam],
+      responses: {
+        ...ok('Farm deleted.', { type: 'null' }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
-  // == Production Management ==================================================
+  // == Plots ================================================================
+
+  '/api/v1/farmers/{farmerId}/plots': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'List plots for farmer',
+      operationId: 'listFarmerPlots',
+      security: auth,
+      parameters: [farmerIdParam],
+      responses: { ...paged('Farmer plots.', '#/components/schemas/FarmerPlot') },
+    },
+    post: {
+      tags: ['Farmers'],
+      summary: 'Create plot for farmer',
+      operationId: 'createFarmerPlot',
+      security: auth,
+      parameters: [farmerIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['plotName', 'area', 'areaUnit'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          plotName: { type: 'string' },
+          area: { type: 'number', minimum: 0.01 },
+          areaUnit: { type: 'string', enum: ['acres', 'hectares', 'square_meters'] },
+          soilType: { type: 'string' },
+          status: { type: 'string', enum: ['active', 'fallow', 'inactive'] },
+          notes: { type: 'string' },
+        },
+      }),
+      responses: { ...created('Plot created.', { $ref: '#/components/schemas/FarmerPlot' }) },
+    },
+  },
+
+  '/api/v1/farmers/plots/{plotId}': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'Get plot by ID',
+      operationId: 'getPlotById',
+      security: auth,
+      parameters: [plotIdParam],
+      responses: {
+        ...ok('Plot retrieved.', { $ref: '#/components/schemas/FarmerPlot' }),
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Farmers'],
+      summary: 'Update plot',
+      operationId: 'updatePlot',
+      security: auth,
+      parameters: [plotIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          plotName: { type: 'string' },
+          area: { type: 'number', minimum: 0.01 },
+          areaUnit: { type: 'string', enum: ['acres', 'hectares', 'square_meters'] },
+          soilType: { type: 'string' },
+          status: { type: 'string', enum: ['active', 'fallow', 'inactive'] },
+          notes: { type: 'string' },
+        },
+      }),
+      responses: { ...ok('Plot updated.', { $ref: '#/components/schemas/FarmerPlot' }) },
+    },
+    delete: {
+      tags: ['Farmers'],
+      summary: 'Soft delete plot',
+      operationId: 'deletePlot',
+      security: auth,
+      parameters: [plotIdParam],
+      responses: { ...ok('Plot deleted.', { type: 'null' }) },
+    },
+  },
+
+  // == Crops ================================================================
 
   '/api/v1/farmers/{farmerId}/production/crops': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'List crop production records',
+      operationId: 'listFarmerCrops',
+      security: auth,
+      parameters: [
+        farmerIdParam,
+        { name: 'year', in: 'query', schema: { type: 'integer' } },
+        { name: 'season', in: 'query', schema: { type: 'string' } },
+        { name: 'cropName', in: 'query', schema: { type: 'string' } },
+      ],
+      responses: { ...paged('Crop production records.', '#/components/schemas/FarmerCropProduction') },
+    },
     post: {
       tags: ['Farmers'],
       summary: 'Record crop production',
       operationId: 'recordCropProduction',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', required: ['cropType', 'season', 'quantityHarvested', 'unit'], properties: { cropType: { type: 'string', example: 'Maize' }, season: { type: 'string', example: '2024A' }, quantityHarvested: { type: 'number' }, unit: { type: 'string', example: 'kg' }, farmId: { type: 'string' }, notes: { type: 'string' } } }),
-      responses: { 201: { description: 'Crop production recorded.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      requestBody: r({
+        type: 'object',
+        required: ['farmId', 'cropName', 'cropCategory', 'season', 'year', 'areaPlanted', 'areaUnit', 'estimatedYield', 'yieldUnit'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          cropName: { type: 'string' },
+          cropCategory: { type: 'string', enum: ['cereals', 'legumes', 'vegetables', 'fruits', 'cash_crops', 'roots_tubers', 'fodder', 'other'] },
+          season: { type: 'string', enum: ['season_a', 'season_b', 'dry_season', 'wet_season', 'year_round'] },
+          year: { type: 'integer' },
+          areaPlanted: { type: 'number' },
+          areaUnit: { type: 'string', enum: ['acres', 'hectares', 'square_meters'] },
+          estimatedYield: { type: 'number' },
+          yieldUnit: { type: 'string', enum: ['kg', 'tons', 'bags', 'bunches', 'pieces'] },
+        },
+      }),
+      responses: { ...created('Crop production recorded.', { $ref: '#/components/schemas/FarmerCropProduction' }) },
+    },
+  },
+
+  '/api/v1/farmers/production/crops/{cropId}': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'Get crop production by ID',
+      operationId: 'getCropProductionById',
+      security: auth,
+      parameters: [cropIdParam],
+      responses: {
+        ...ok('Crop production retrieved.', { $ref: '#/components/schemas/FarmerCropProduction' }),
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Farmers'],
+      summary: 'Update crop production',
+      operationId: 'updateCropProduction',
+      security: auth,
+      parameters: [cropIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          cropName: { type: 'string' },
+          productionStatus: { type: 'string', enum: ['planned', 'in_progress', 'harvested', 'sold', 'stored', 'failed'] },
+          actualYield: { type: 'number' },
+          notes: { type: 'string' },
+        },
+      }),
+      responses: { ...ok('Crop production updated.', { $ref: '#/components/schemas/FarmerCropProduction' }) },
+    },
+    delete: {
+      tags: ['Farmers'],
+      summary: 'Soft delete crop production',
+      operationId: 'deleteCropProduction',
+      security: auth,
+      parameters: [cropIdParam],
+      responses: { ...ok('Crop production deleted.', { type: 'null' }) },
     },
   },
 
@@ -166,19 +469,112 @@ export const farmersPaths: Record<string, unknown> = {
       operationId: 'recordLivestockProduction',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', required: ['animalType', 'quantity'], properties: { animalType: { type: 'string', example: 'Cattle' }, quantity: { type: 'integer', minimum: 1 }, purpose: { type: 'string', enum: ['dairy', 'meat', 'eggs', 'draft', 'breeding', 'other'] }, notes: { type: 'string' } } }),
-      responses: { 201: { description: 'Livestock production recorded.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      requestBody: r({
+        type: 'object',
+        required: ['farmId', 'animalType', 'productionSystem', 'totalAnimals', 'primaryPurpose', 'year', 'startDate'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          animalType: { type: 'string' },
+          productionSystem: { type: 'string' },
+          totalAnimals: { type: 'integer', minimum: 1 },
+          primaryPurpose: { type: 'string' },
+          year: { type: 'integer' },
+          startDate: { type: 'string', format: 'date-time' },
+        },
+      }),
+      responses: { ...created('Livestock production recorded.', { type: 'object', additionalProperties: true }) },
     },
   },
 
   '/api/v1/farmers/{farmerId}/production': {
     get: {
       tags: ['Farmers'],
-      summary: 'Get production history',
+      summary: 'Get combined production history',
       operationId: 'getFarmerProduction',
       security: auth,
-      parameters: [farmerIdParam, pageParam, limitParam, { name: 'type', in: 'query', schema: { type: 'string', enum: ['crop', 'livestock'] } }],
-      responses: { 200: { description: 'Production records.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      parameters: [
+        farmerIdParam,
+        { name: 'productionType', in: 'query', schema: { type: 'string', enum: ['crops', 'livestock', 'all'] } },
+        { name: 'year', in: 'query', schema: { type: 'integer' } },
+      ],
+      responses: { ...ok('Production records.', { type: 'object', properties: { crops: { type: 'array', items: { $ref: '#/components/schemas/FarmerCropProduction' } }, livestock: { type: 'array', items: { type: 'object', additionalProperties: true } } } }) },
+    },
+  },
+
+  // == Inputs ===============================================================
+
+  '/api/v1/farmers/{farmerId}/inputs': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'List farmer inputs',
+      operationId: 'listFarmerInputs',
+      security: auth,
+      parameters: [farmerIdParam],
+      responses: { ...paged('Farmer input records.', '#/components/schemas/FarmerInput') },
+    },
+    post: {
+      tags: ['Farmers'],
+      summary: 'Create farmer input record',
+      operationId: 'createFarmerInput',
+      security: auth,
+      parameters: [farmerIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['inputName', 'inputType', 'quantity', 'unit'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          plotId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          inputName: { type: 'string' },
+          inputType: { type: 'string', enum: ['seed', 'fertilizer', 'pesticide', 'herbicide', 'feed', 'equipment', 'other'] },
+          quantity: { type: 'number', minimum: 0 },
+          unit: { type: 'string' },
+          cost: { type: 'number' },
+          currency: { type: 'string' },
+          status: { type: 'string', enum: ['planned', 'applied', 'consumed', 'cancelled'] },
+        },
+      }),
+      responses: { ...created('Input created.', { $ref: '#/components/schemas/FarmerInput' }) },
+    },
+  },
+
+  '/api/v1/farmers/inputs/{inputId}': {
+    get: {
+      tags: ['Farmers'],
+      summary: 'Get input by ID',
+      operationId: 'getInputById',
+      security: auth,
+      parameters: [inputIdParam],
+      responses: {
+        ...ok('Input retrieved.', { $ref: '#/components/schemas/FarmerInput' }),
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Farmers'],
+      summary: 'Update input',
+      operationId: 'updateInput',
+      security: auth,
+      parameters: [inputIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          inputName: { type: 'string' },
+          inputType: { type: 'string', enum: ['seed', 'fertilizer', 'pesticide', 'herbicide', 'feed', 'equipment', 'other'] },
+          quantity: { type: 'number', minimum: 0 },
+          unit: { type: 'string' },
+          active: { type: 'boolean' },
+          status: { type: 'string', enum: ['planned', 'applied', 'consumed', 'cancelled'] },
+        },
+      }),
+      responses: { ...ok('Input updated.', { $ref: '#/components/schemas/FarmerInput' }) },
+    },
+    delete: {
+      tags: ['Farmers'],
+      summary: 'Soft delete input',
+      operationId: 'deleteInput',
+      security: auth,
+      parameters: [inputIdParam],
+      responses: { ...ok('Input deleted.', { type: 'null' }) },
     },
   },
 
@@ -191,8 +587,15 @@ export const farmersPaths: Record<string, unknown> = {
       operationId: 'joinOrganization',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', required: ['organizationId'], properties: { organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' } } }),
-      responses: { 200: { description: 'Joined organization.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      requestBody: r({
+        type: 'object',
+        required: ['organizationId'],
+        properties: {
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          role: { type: 'string' },
+        },
+      }),
+      responses: { ...ok('Joined organization.', { type: 'object', additionalProperties: true }) },
     },
   },
 
@@ -203,8 +606,8 @@ export const farmersPaths: Record<string, unknown> = {
       operationId: 'leaveOrganization',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', properties: { reason: { type: 'string' } } }),
-      responses: { 200: { description: 'Left organization.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      requestBody: r({ type: 'object', properties: { exitReason: { type: 'string' }, exitNotes: { type: 'string' } } }),
+      responses: { ...ok('Left organization.', { type: 'object', additionalProperties: true }) },
     },
   },
 
@@ -212,12 +615,21 @@ export const farmersPaths: Record<string, unknown> = {
     patch: {
       tags: ['Farmers', 'Admin'],
       summary: 'Update service eligibility',
-      description: 'Requires platform_admin or org:manager role.',
       operationId: 'updateFarmerEligibility',
       security: auth,
       parameters: [farmerIdParam],
-      requestBody: r({ type: 'object', required: ['serviceType', 'eligible'], properties: { serviceType: { type: 'string', example: 'credit' }, eligible: { type: 'boolean' }, reason: { type: 'string' } } }),
-      responses: { 200: { description: 'Eligibility updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      requestBody: r({
+        type: 'object',
+        properties: {
+          eligibleForLoans: { type: 'boolean' },
+          maxLoanAmount: { type: 'number' },
+          eligibleForInsurance: { type: 'boolean' },
+        },
+      }),
+      responses: {
+        ...ok('Eligibility updated.', { type: 'object', additionalProperties: true }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
@@ -227,11 +639,23 @@ export const farmersPaths: Record<string, unknown> = {
     get: {
       tags: ['Farmers', 'Admin'],
       summary: 'Farmer module statistics',
-      description: 'Aggregate stats for the platform. Requires admin or org:manager role.',
       operationId: 'getFarmerStats',
       security: auth,
       parameters: [{ name: 'region', in: 'query', schema: { type: 'string' } }],
-      responses: { 200: { description: 'Farmer statistics.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      responses: {
+        ...ok('Farmer statistics.', {
+          type: 'object',
+          properties: {
+            totalFarmers: { type: 'integer' },
+            verifiedFarmers: { type: 'integer' },
+            byVerificationStatus: {
+              type: 'array',
+              items: { type: 'object', properties: { status: { type: 'string' }, count: { type: 'integer' } } },
+            },
+          },
+        }),
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
@@ -241,7 +665,6 @@ export const farmersPaths: Record<string, unknown> = {
     get: {
       tags: ['Farmers'],
       summary: '[Legacy] List all farmers',
-      description: 'Backward-compatible route. Prefer `/api/v1/farmers/profiles`.',
       operationId: 'legacyListFarmers',
       parameters: [pageParam, limitParam, { name: 'region', in: 'query', schema: { type: 'string' } }],
       responses: { 200: { description: 'Farmers list.' } },
@@ -249,7 +672,6 @@ export const farmersPaths: Record<string, unknown> = {
     post: {
       tags: ['Farmers'],
       summary: '[Legacy] Create farmer profile',
-      description: 'Backward-compatible route. Prefer `/api/v1/farmers/profiles`.',
       operationId: 'legacyCreateFarmer',
       security: auth,
       requestBody: r({ $ref: '#/components/schemas/FarmerCreateRequest' }),

@@ -209,6 +209,120 @@ class WeatherAlertService {
     return alert;
   }
 
+  async escalateAlert(
+    alertId: string,
+    userId: string,
+    reason?: string,
+    severity?: AlertSeverity
+  ): Promise<IWeatherAlertDocument> {
+    const alert = await this.getAlert(alertId);
+
+    if (alert.status === AlertStatus.EXPIRED || alert.status === AlertStatus.DISMISSED) {
+      throw new AppError('Cannot escalate dismissed or expired alerts', 400);
+    }
+
+    const severityOrder: AlertSeverity[] = [
+      AlertSeverity.LOW,
+      AlertSeverity.MEDIUM,
+      AlertSeverity.HIGH,
+      AlertSeverity.CRITICAL,
+    ];
+
+    const escalatedSeverity = severity || (() => {
+      const index = severityOrder.indexOf(alert.severity);
+      return severityOrder[Math.min(index + 1, severityOrder.length - 1)];
+    })();
+
+    alert.severity = escalatedSeverity;
+    alert.status = AlertStatus.NEW;
+    alert.triggeredBy = 'manual';
+    alert.triggeredByUserId = new mongoose.Types.ObjectId(userId);
+    if (reason) {
+      alert.recommendedActions = [
+        ...(alert.recommendedActions || []),
+        `Escalation note: ${reason}`,
+      ];
+    }
+
+    await alert.save();
+    await this.sendAlert(alert._id.toString());
+
+    await auditService.log({
+      userId,
+      action: 'escalate',
+      resource: 'WeatherAlert',
+      resourceId: alertId,
+      details: {
+        metadata: {
+          reason,
+          severity: escalatedSeverity,
+        },
+      },
+      status: 'success',
+    });
+
+    return this.getAlert(alertId);
+  }
+
+  async simulateAlert(
+    data: {
+      farmId: string;
+      farmerId: string;
+      organizationId?: string;
+      alertType: AlertType;
+      severity: AlertSeverity;
+      advisoryMessage: string;
+      recommendedActions?: string[];
+      expiresAt?: Date;
+      triggerRule?: {
+        ruleName: string;
+        thresholds?: Record<string, number>;
+        actualValues?: Record<string, number>;
+      };
+    },
+    userId: string
+  ): Promise<IWeatherAlertDocument> {
+    const alert = await WeatherAlert.create({
+      farmId: new mongoose.Types.ObjectId(data.farmId),
+      farmerId: new mongoose.Types.ObjectId(data.farmerId),
+      organizationId: data.organizationId
+        ? new mongoose.Types.ObjectId(data.organizationId)
+        : null,
+      alertType: data.alertType,
+      severity: data.severity,
+      triggerRule: {
+        ruleName: data.triggerRule?.ruleName || 'Admin simulation',
+        thresholds: data.triggerRule?.thresholds || {},
+        actualValues: data.triggerRule?.actualValues || {},
+      },
+      advisoryMessage: data.advisoryMessage,
+      recommendedActions: data.recommendedActions || [],
+      status: AlertStatus.NEW,
+      expiresAt: data.expiresAt || new Date(Date.now() + (24 * 60 * 60 * 1000)),
+      triggeredBy: 'manual',
+      triggeredByUserId: new mongoose.Types.ObjectId(userId),
+    });
+
+    await this.sendAlert(alert._id.toString());
+
+    await auditService.log({
+      userId,
+      action: 'create',
+      resource: 'WeatherAlert',
+      resourceId: alert._id.toString(),
+      details: {
+        metadata: {
+          simulated: true,
+          alertType: data.alertType,
+          severity: data.severity,
+        },
+      },
+      status: 'success',
+    });
+
+    return this.getAlert(alert._id.toString());
+  }
+
   // ---- Expiry Cleanup (cron) -----------------------------------------------
 
   async expireOldAlerts(): Promise<number> {

@@ -304,6 +304,67 @@ export const alertIdValidator = [
   isObjectId('id'),
 ];
 
+export const escalateAlertValidator = [
+  isObjectId('id'),
+  body('reason')
+    .optional()
+    .isString()
+    .withMessage('reason must be a string')
+    .isLength({ max: 1000 })
+    .withMessage('reason must be at most 1000 characters'),
+  body('severity')
+    .optional()
+    .isIn(Object.values(AlertSeverity))
+    .withMessage(`severity must be one of: ${Object.values(AlertSeverity).join(', ')}`),
+];
+
+export const simulateAlertValidator = [
+  body('farmId')
+    .notEmpty()
+    .withMessage('farmId is required')
+    .isMongoId()
+    .withMessage('farmId must be a valid MongoDB ObjectId'),
+  body('farmerId')
+    .notEmpty()
+    .withMessage('farmerId is required')
+    .isMongoId()
+    .withMessage('farmerId must be a valid MongoDB ObjectId'),
+  isOptionalObjectId('organizationId'),
+  body('alertType')
+    .notEmpty()
+    .withMessage('alertType is required')
+    .isIn(Object.values(AlertType))
+    .withMessage(`alertType must be one of: ${Object.values(AlertType).join(', ')}`),
+  body('severity')
+    .notEmpty()
+    .withMessage('severity is required')
+    .isIn(Object.values(AlertSeverity))
+    .withMessage(`severity must be one of: ${Object.values(AlertSeverity).join(', ')}`),
+  body('advisoryMessage')
+    .notEmpty()
+    .withMessage('advisoryMessage is required')
+    .isString()
+    .withMessage('advisoryMessage must be a string')
+    .isLength({ max: 2000 })
+    .withMessage('advisoryMessage must be at most 2000 characters'),
+  body('recommendedActions')
+    .optional()
+    .isArray()
+    .withMessage('recommendedActions must be an array'),
+  body('recommendedActions.*')
+    .optional()
+    .isString()
+    .withMessage('recommendedActions items must be strings'),
+  body('expiresAt')
+    .optional()
+    .isISO8601()
+    .withMessage('expiresAt must be a valid ISO date'),
+  body('triggerRule.ruleName')
+    .optional()
+    .isString()
+    .withMessage('triggerRule.ruleName must be a string'),
+];
+
 // ============================================================================
 // Forecast horizon query
 // ============================================================================

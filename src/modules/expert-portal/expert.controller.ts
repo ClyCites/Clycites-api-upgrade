@@ -703,6 +703,106 @@ export const acknowledgeAdvisory = async (
   }
 };
 
+/**
+ * GET /expert-portal/advisories/:id
+ * Get advisory by ID
+ */
+export const getAdvisory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const advisory = await advisoryService.getAdvisoryById(req.params.id);
+    successResponse(res, advisory, 'Advisory retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PATCH /expert-portal/advisories/:id
+ * Update advisory
+ */
+export const updateAdvisory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const advisory = await advisoryService.updateAdvisory(
+      req.params.id,
+      req.user!.id,
+      req.user!.role,
+      req.body
+    );
+    successResponse(res, advisory, 'Advisory updated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /expert-portal/advisories/:id
+ * Delete advisory
+ */
+export const deleteAdvisory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    await advisoryService.deleteAdvisory(req.params.id, req.user!.id, req.user!.role);
+    successResponse(res, null, 'Advisory deleted');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /expert-portal/advisories/:id/submit
+ * Submit advisory for review
+ */
+export const submitAdvisory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const advisory = await advisoryService.submitAdvisory(req.params.id, req.user!.id);
+    successResponse(res, advisory, 'Advisory submitted for review');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /expert-portal/advisories/:id/review
+ * Review advisory submission
+ */
+export const reviewAdvisory = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { decision, reason } = req.body;
+    const advisory = await advisoryService.reviewAdvisory(
+      req.params.id,
+      req.user!.id,
+      decision,
+      reason
+    );
+    successResponse(
+      res,
+      advisory,
+      decision === 'approved' ? 'Advisory approved' : 'Advisory rejected'
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ============================================================================
 // FARMER INQUIRIES
 // ============================================================================
@@ -873,6 +973,66 @@ export const rateExpertResponse = async (
       feedback
     );
     successResponse(res, inquiry, 'Response rated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /expert-portal/inquiries/:id
+ * Get inquiry by ID
+ */
+export const getInquiry = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const inquiry = await advisoryService.getInquiryById(
+      req.params.id,
+      req.user!.id,
+      req.user!.role
+    );
+    successResponse(res, inquiry, 'Inquiry retrieved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * PATCH /expert-portal/inquiries/:id
+ * Update inquiry
+ */
+export const updateInquiry = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const inquiry = await advisoryService.updateInquiry(
+      req.params.id,
+      req.user!.id,
+      req.user!.role,
+      req.body
+    );
+    successResponse(res, inquiry, 'Inquiry updated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /expert-portal/inquiries/:id
+ * Delete inquiry
+ */
+export const deleteInquiry = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    await advisoryService.deleteInquiry(req.params.id, req.user!.id, req.user!.role);
+    successResponse(res, null, 'Inquiry deleted');
   } catch (err) {
     next(err);
   }

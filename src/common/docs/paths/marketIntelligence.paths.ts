@@ -168,22 +168,33 @@ export const marketIntelligencePaths: Record<string, unknown> = {
       security: auth,
       requestBody: r({
         type: 'object',
-        required: ['product', 'region', 'conditions'],
+        required: ['product'],
         properties: {
           product: { type: 'string', description: 'Product ID.' },
           region: { type: 'string' },
           district: { type: 'string' },
+          condition: {
+            type: 'object',
+            properties: {
+              operator: { type: 'string', enum: ['below', 'above', 'equals', 'changes_by'] },
+              threshold: { type: 'number' },
+              percentage: { type: 'number' },
+            },
+          },
           conditions: {
             type: 'object',
-            description: 'Alert trigger conditions.',
+            description: 'Legacy compatibility condition object.',
             properties: {
               priceAbove: { type: 'number' },
               priceBelow: { type: 'number' },
-              priceChangePercent: { type: 'number' },
-              demandLevel: { type: 'string', enum: ['low', 'medium', 'high'] },
+              targetPrice: { type: 'number' },
+              changePercent: { type: 'number' },
             },
           },
-          notificationChannels: { type: 'array', items: { type: 'string', enum: ['push', 'email', 'sms'] } },
+          notificationChannels: { type: 'array', items: { type: 'string', enum: ['push', 'email', 'sms', 'in_app', 'inApp'] } },
+          alertType: { type: 'string', enum: ['price_drop', 'price_increase', 'target_price', 'availability'] },
+          active: { type: 'boolean' },
+          isActive: { type: 'boolean', description: 'Legacy compatibility alias for active.' },
         },
       }),
       responses: {
@@ -197,7 +208,15 @@ export const marketIntelligencePaths: Record<string, unknown> = {
       summary: 'Get my market alerts',
       operationId: 'getMIAlerts',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'active', in: 'query', schema: { type: 'boolean' } }],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive'] }, description: 'Preferred status filter; takes precedence over active.' },
+        { name: 'active', in: 'query', schema: { type: 'boolean' } },
+        { name: 'product', in: 'query', schema: { type: 'string' } },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+        { name: 'district', in: 'query', schema: { type: 'string' } },
+      ],
       responses: {
         200: { description: 'Alert list.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -212,7 +231,7 @@ export const marketIntelligencePaths: Record<string, unknown> = {
       operationId: 'updateMIAlert',
       security: auth,
       parameters: [{ name: 'alertId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
-      requestBody: r({ type: 'object', properties: { conditions: { type: 'object' }, notificationChannels: { type: 'array', items: { type: 'string' } }, active: { type: 'boolean' } } }),
+      requestBody: r({ type: 'object', properties: { condition: { type: 'object' }, conditions: { type: 'object' }, notificationChannels: { type: 'array', items: { type: 'string' } }, active: { type: 'boolean' }, isActive: { type: 'boolean' } } }),
       responses: {
         200: { description: 'Alert updated.' },
         401: { $ref: '#/components/responses/Unauthorized' },

@@ -209,6 +209,7 @@ export interface IFarmEnterprise extends Document {
   verifiedAt?: Date;
   verifiedBy?: mongoose.Types.ObjectId;
   notes?: string; // Admin notes
+  softDelete(deletedBy?: mongoose.Types.ObjectId): Promise<IFarmEnterprise>;
 }
 
 const FarmEnterpriseSchema = new Schema<IFarmEnterprise>(

@@ -52,6 +52,11 @@ import {
   sendAdvisory,
   issueEmergencyAlert,
   listAdvisories,
+  getAdvisory,
+  updateAdvisory,
+  deleteAdvisory,
+  submitAdvisory,
+  reviewAdvisory,
   getFarmerAdvisoryFeed,
   acknowledgeAdvisory,
   // Inquiries
@@ -63,6 +68,9 @@ import {
   respondToInquiry,
   addFollowUp,
   rateExpertResponse,
+  getInquiry,
+  updateInquiry,
+  deleteInquiry,
   // Analytics
   getDiseaseSpread,
   getOutbreakHeatmap,
@@ -87,7 +95,9 @@ import {
   addTranslationSchema,
   createAdvisorySchema,
   emergencyAlertSchema,
+  reviewAdvisorySchema,
   createInquirySchema,
+  updateInquirySchema,
   respondToInquirySchema,
   followUpMessageSchema,
   rateResponseSchema,
@@ -437,6 +447,41 @@ router.get(
 );
 
 /**
+ * @route   GET /api/v1/expert-portal/advisories/:id
+ * @desc    Get advisory by ID
+ * @access  Private
+ */
+router.get(
+  '/advisories/:id',
+  authenticate,
+  getAdvisory
+);
+
+/**
+ * @route   PATCH /api/v1/expert-portal/advisories/:id
+ * @desc    Update advisory
+ * @access  Private (author or admin)
+ */
+router.patch(
+  '/advisories/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  updateAdvisory
+);
+
+/**
+ * @route   DELETE /api/v1/expert-portal/advisories/:id
+ * @desc    Delete advisory
+ * @access  Private (author or admin)
+ */
+router.delete(
+  '/advisories/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  deleteAdvisory
+);
+
+/**
  * @route   POST /api/v1/expert-portal/advisories/:id/send
  * @desc    Send / broadcast an advisory
  * @access  Private (expert, admin)
@@ -446,6 +491,31 @@ router.post(
   authenticate,
   authorize('expert', 'platform_admin'),
   sendAdvisory
+);
+
+/**
+ * @route   POST /api/v1/expert-portal/advisories/:id/submit
+ * @desc    Submit advisory for review
+ * @access  Private (expert)
+ */
+router.post(
+  '/advisories/:id/submit',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  submitAdvisory
+);
+
+/**
+ * @route   POST /api/v1/expert-portal/advisories/:id/review
+ * @desc    Approve or reject submitted advisory
+ * @access  Private (admin)
+ */
+router.post(
+  '/advisories/:id/review',
+  authenticate,
+  authorize('platform_admin'),
+  validate(reviewAdvisorySchema),
+  reviewAdvisory
 );
 
 /**
@@ -551,6 +621,40 @@ router.post(
   authorize('farmer'),
   validate(rateResponseSchema),
   rateExpertResponse
+);
+
+/**
+ * @route   GET /api/v1/expert-portal/inquiries/:id
+ * @desc    Get inquiry by ID
+ * @access  Private
+ */
+router.get(
+  '/inquiries/:id',
+  authenticate,
+  getInquiry
+);
+
+/**
+ * @route   PATCH /api/v1/expert-portal/inquiries/:id
+ * @desc    Update inquiry
+ * @access  Private (owner or admin)
+ */
+router.patch(
+  '/inquiries/:id',
+  authenticate,
+  validate(updateInquirySchema),
+  updateInquiry
+);
+
+/**
+ * @route   DELETE /api/v1/expert-portal/inquiries/:id
+ * @desc    Delete inquiry
+ * @access  Private (owner or admin)
+ */
+router.delete(
+  '/inquiries/:id',
+  authenticate,
+  deleteInquiry
 );
 
 // ===========================================================================

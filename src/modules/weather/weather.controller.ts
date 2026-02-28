@@ -326,6 +326,21 @@ export async function dismissAlert(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+export async function escalateAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const alert = await weatherAlertService.escalateAlert(
+      req.params.id,
+      userId,
+      req.body.reason,
+      req.body.severity as AlertSeverity | undefined
+    );
+    sendSuccess(res, alert, 'Alert escalated');
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getOrgAlerts(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.params.orgId;
@@ -523,6 +538,16 @@ export async function getProviderStatus(_req: Request, res: Response, next: Next
   try {
     const providers = weatherProviderService.getProviderNames();
     sendSuccess(res, { providers }, 'Provider status');
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function simulateAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.id;
+    const alert = await weatherAlertService.simulateAlert(req.body, userId);
+    sendSuccess(res, alert, 'Weather alert simulated', 201);
   } catch (error) {
     next(error);
   }

@@ -190,6 +190,13 @@ router.post(
   controller.dismissAlert
 );
 
+router.post(
+  '/alerts/:id/escalate',
+  authenticate,
+  validate(validators.escalateAlertValidator),
+  controller.escalateAlert
+);
+
 router.get(
   '/org/:orgId/alerts',
   authenticate,
@@ -291,6 +298,14 @@ router.get(
   authenticate,
   authorize('platform_admin'),
   controller.getProviderStatus
+);
+
+router.post(
+  '/admin/simulate',
+  authenticate,
+  authorize('platform_admin'),
+  validate(validators.simulateAlertValidator),
+  controller.simulateAlert
 );
 
 export default router;

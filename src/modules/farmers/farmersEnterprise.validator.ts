@@ -59,7 +59,7 @@ export const updateProfileValidator = [
   
   body('verificationStatus')
     .optional()
-    .isIn(['unverified', 'pending', 'verified', 'rejected', 'suspended'])
+    .isIn(['draft', 'submitted', 'verified', 'rejected'])
     .withMessage('Invalid verification status'),
   
   body('farmerType')
@@ -72,8 +72,15 @@ export const submitVerificationValidator = [
   param('id')
     .isMongoId()
     .withMessage('Invalid farmer ID'),
-  
+
+  body('notes')
+    .optional()
+    .isString()
+    .withMessage('Notes must be a string'),
+
+  // Legacy compatibility
   body('verificationLevel')
+    .optional()
     .isIn(['basic', 'intermediate', 'advanced'])
     .withMessage('Invalid verification level'),
 ];
@@ -82,15 +89,36 @@ export const verifyProfileValidator = [
   param('id')
     .isMongoId()
     .withMessage('Invalid farmer ID'),
-  
+
+  body('status')
+    .optional()
+    .isIn(['verified', 'rejected'])
+    .withMessage('Status must be either verified or rejected'),
+
+  // Legacy compatibility
   body('approved')
+    .optional()
     .isBoolean()
     .withMessage('Approved must be a boolean'),
+
+  body()
+    .custom((value) => {
+      if (!value || typeof value !== 'object') {
+        return false;
+      }
+      return value.status !== undefined || value.approved !== undefined;
+    })
+    .withMessage('Either status or approved must be provided'),
   
   body('notes')
     .optional()
     .isString()
     .withMessage('Notes must be a string'),
+
+  body('reason')
+    .optional()
+    .isString()
+    .withMessage('Reason must be a string'),
 ];
 
 export const listProfilesValidator = [
@@ -111,8 +139,13 @@ export const listProfilesValidator = [
   
   query('verificationStatus')
     .optional()
-    .isIn(['unverified', 'pending', 'verified', 'rejected', 'suspended'])
+    .isIn(['draft', 'submitted', 'verified', 'rejected'])
     .withMessage('Invalid verification status'),
+
+  query('verified')
+    .optional()
+    .isBoolean()
+    .withMessage('Verified must be a boolean'),
 ];
 
 // ==================== FARM VALIDATORS ====================
@@ -173,6 +206,82 @@ export const updateFarmValidator = [
     .optional()
     .isIn(['active', 'inactive', 'fallow', 'under_development', 'abandoned'])
     .withMessage('Invalid operational status'),
+];
+
+export const farmIdValidator = [
+  param('farmId')
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+];
+
+// ==================== PLOT VALIDATORS ====================
+
+export const createPlotValidator = [
+  param('farmerId')
+    .isMongoId()
+    .withMessage('Invalid farmer ID'),
+
+  body('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+
+  body('plotName')
+    .notEmpty()
+    .withMessage('Plot name is required')
+    .isString()
+    .withMessage('Plot name must be a string'),
+
+  body('area')
+    .isFloat({ min: 0.01 })
+    .withMessage('Area must be a positive number'),
+
+  body('areaUnit')
+    .optional()
+    .isIn(['acres', 'hectares', 'square_meters'])
+    .withMessage('Invalid area unit'),
+
+  body('status')
+    .optional()
+    .isIn(['active', 'fallow', 'inactive'])
+    .withMessage('Invalid plot status'),
+];
+
+export const updatePlotValidator = [
+  param('plotId')
+    .isMongoId()
+    .withMessage('Invalid plot ID'),
+
+  body('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+
+  body('plotName')
+    .optional()
+    .isString()
+    .withMessage('Plot name must be a string'),
+
+  body('area')
+    .optional()
+    .isFloat({ min: 0.01 })
+    .withMessage('Area must be a positive number'),
+
+  body('areaUnit')
+    .optional()
+    .isIn(['acres', 'hectares', 'square_meters'])
+    .withMessage('Invalid area unit'),
+
+  body('status')
+    .optional()
+    .isIn(['active', 'fallow', 'inactive'])
+    .withMessage('Invalid plot status'),
+];
+
+export const plotIdValidator = [
+  param('plotId')
+    .isMongoId()
+    .withMessage('Invalid plot ID'),
 ];
 
 // ==================== PRODUCTION VALIDATORS ====================
@@ -251,6 +360,118 @@ export const recordLivestockProductionValidator = [
   body('startDate')
     .isISO8601()
     .withMessage('Invalid start date'),
+];
+
+export const cropIdValidator = [
+  param('cropId')
+    .isMongoId()
+    .withMessage('Invalid crop ID'),
+];
+
+export const updateCropProductionValidator = [
+  param('cropId')
+    .isMongoId()
+    .withMessage('Invalid crop ID'),
+
+  body('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+
+  body('cropName')
+    .optional()
+    .isString()
+    .withMessage('Crop name must be a string'),
+
+  body('productionStatus')
+    .optional()
+    .isIn(['planned', 'in_progress', 'harvested', 'sold', 'stored', 'failed'])
+    .withMessage('Invalid production status'),
+];
+
+// ==================== INPUT VALIDATORS ====================
+
+export const createInputValidator = [
+  param('farmerId')
+    .isMongoId()
+    .withMessage('Invalid farmer ID'),
+
+  body('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+
+  body('plotId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid plot ID'),
+
+  body('inputName')
+    .notEmpty()
+    .withMessage('Input name is required')
+    .isString()
+    .withMessage('Input name must be a string'),
+
+  body('inputType')
+    .isIn(['seed', 'fertilizer', 'pesticide', 'herbicide', 'feed', 'equipment', 'other'])
+    .withMessage('Invalid input type'),
+
+  body('quantity')
+    .isFloat({ min: 0 })
+    .withMessage('Quantity must be a non-negative number'),
+
+  body('unit')
+    .notEmpty()
+    .withMessage('Unit is required')
+    .isString()
+    .withMessage('Unit must be a string'),
+
+  body('status')
+    .optional()
+    .isIn(['planned', 'applied', 'consumed', 'cancelled'])
+    .withMessage('Invalid input status'),
+];
+
+export const updateInputValidator = [
+  param('inputId')
+    .isMongoId()
+    .withMessage('Invalid input ID'),
+
+  body('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid farm ID'),
+
+  body('plotId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid plot ID'),
+
+  body('inputName')
+    .optional()
+    .isString()
+    .withMessage('Input name must be a string'),
+
+  body('inputType')
+    .optional()
+    .isIn(['seed', 'fertilizer', 'pesticide', 'herbicide', 'feed', 'equipment', 'other'])
+    .withMessage('Invalid input type'),
+
+  body('quantity')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Quantity must be a non-negative number'),
+
+  body('status')
+    .optional()
+    .isIn(['planned', 'applied', 'consumed', 'cancelled'])
+    .withMessage('Invalid input status'),
+];
+
+export const inputIdValidator = [
+  param('inputId')
+    .isMongoId()
+    .withMessage('Invalid input ID'),
 ];
 
 // ==================== MEMBERSHIP VALIDATORS ====================

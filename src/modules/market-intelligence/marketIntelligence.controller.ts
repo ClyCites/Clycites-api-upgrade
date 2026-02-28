@@ -3,10 +3,93 @@ import { marketIntelligenceService } from './marketIntelligence.service';
 import { AppError } from '../../common/errors/AppError';
 import PriceAlert from './priceAlert.model';
 import MarketInsight from './marketInsight.model';
+import { ResponseHandler, sendSuccess } from '../../common/utils/response';
+
+type AlertCondition = {
+  operator: 'below' | 'above' | 'equals' | 'changes_by';
+  threshold: number;
+  percentage?: number;
+};
 
 class MarketIntelligenceController {
+  private normalizeAlertCondition(input: unknown): AlertCondition {
+    if (
+      input &&
+      typeof input === 'object' &&
+      'operator' in input &&
+      'threshold' in input
+    ) {
+      const condition = input as AlertCondition;
+      if (!['below', 'above', 'equals', 'changes_by'].includes(condition.operator)) {
+        throw new AppError('Invalid condition.operator value', 400);
+      }
+
+      if (typeof condition.threshold !== 'number') {
+        throw new AppError('condition.threshold must be a number', 400);
+      }
+
+      return condition;
+    }
+
+    if (input && typeof input === 'object') {
+      const legacy = input as Record<string, unknown>;
+      if (typeof legacy.priceBelow === 'number') {
+        return { operator: 'below', threshold: legacy.priceBelow };
+      }
+      if (typeof legacy.priceAbove === 'number') {
+        return { operator: 'above', threshold: legacy.priceAbove };
+      }
+      if (typeof legacy.targetPrice === 'number') {
+        return { operator: 'equals', threshold: legacy.targetPrice };
+      }
+      if (typeof legacy.changePercent === 'number') {
+        return {
+          operator: 'changes_by',
+          threshold: 0,
+          percentage: legacy.changePercent,
+        };
+      }
+    }
+
+    throw new AppError(
+      'Alert condition is required. Provide condition { operator, threshold } or legacy priceAbove/priceBelow/targetPrice',
+      400
+    );
+  }
+
+  private normalizeNotificationChannels(channels: unknown): string[] {
+    const defaults = ['in_app'];
+    if (!Array.isArray(channels) || !channels.length) {
+      return defaults;
+    }
+
+    const mapped = channels
+      .filter((channel): channel is string => typeof channel === 'string')
+      .map((channel) => {
+        if (channel === 'inApp') return 'in_app';
+        return channel;
+      })
+      .filter((channel) => ['email', 'sms', 'push', 'in_app'].includes(channel));
+
+    return mapped.length ? mapped : defaults;
+  }
+
+  private parseBooleanQuery(value: unknown): boolean | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    const normalized = String(value).toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    return undefined;
+  }
+
   /**
-   * Get market insights for a product
    * GET /api/market-intelligence/insights
    */
   async getMarketInsights(req: Request, res: Response, next: NextFunction) {
@@ -24,17 +107,13 @@ class MarketIntelligenceController {
         period as 'daily' | 'weekly' | 'monthly'
       );
 
-      res.json({
-        success: true,
-        data: { insight },
-      });
+      sendSuccess(res, { insight });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Get price recommendation for a listing
    * GET /api/market-intelligence/price-recommendation
    */
   async getPriceRecommendation(req: Request, res: Response, next: NextFunction) {
@@ -51,23 +130,19 @@ class MarketIntelligenceController {
 
       const recommendation = await marketIntelligenceService.getPriceRecommendation(
         productId as string,
-        parseInt(quantity as string),
-        quality as string || 'standard',
+        parseInt(quantity as string, 10),
+        (quality as string) || 'standard',
         region as string,
-        undefined // district
+        undefined
       );
 
-      res.json({
-        success: true,
-        data: { recommendation },
-      });
+      sendSuccess(res, { recommendation });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Create a price alert
    * POST /api/market-intelligence/alerts
    */
   async createPriceAlert(req: Request, res: Response, next: NextFunction) {
@@ -77,30 +152,37 @@ class MarketIntelligenceController {
         throw new AppError('Authentication required', 401);
       }
 
-      const { product, region, district, conditions, notificationChannels } = req.body;
+      const { product, region, district, condition, conditions, notificationChannels, active, isActive, alertType, frequency } = req.body;
+
+      if (!product) {
+        throw new AppError('Product is required', 400);
+      }
+
+      const normalizedCondition = this.normalizeAlertCondition(condition ?? conditions);
+      const normalizedChannels = this.normalizeNotificationChannels(notificationChannels);
+      const normalizedActive = typeof active === 'boolean'
+        ? active
+        : (typeof isActive === 'boolean' ? isActive : true);
 
       const alert = await PriceAlert.create({
         user: userId,
         product,
         region,
         district,
-        conditions,
-        notificationChannels: notificationChannels || ['inApp'],
-        isActive: true,
+        alertType: alertType || 'target_price',
+        condition: normalizedCondition,
+        notificationChannels: normalizedChannels,
+        frequency: frequency || 'instant',
+        active: normalizedActive,
       });
 
-      res.status(201).json({
-        success: true,
-        message: 'Price alert created successfully',
-        data: { alert },
-      });
+      sendSuccess(res, alert, 'Price alert created successfully', 201);
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Get user's price alerts
    * GET /api/market-intelligence/alerts
    */
   async getUserAlerts(req: Request, res: Response, next: NextFunction) {
@@ -110,27 +192,63 @@ class MarketIntelligenceController {
         throw new AppError('Authentication required', 401);
       }
 
-      const alerts = await PriceAlert.find({ user: userId })
-        .populate('product', 'name category variety')
-        .sort('-createdAt');
+      const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
+      const skip = (page - 1) * limit;
 
-      res.json({
-        success: true,
-        data: { alerts, total: alerts.length },
-      });
+      const activeFilter = this.parseBooleanQuery(req.query.active);
+      const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
+
+      const query: Record<string, unknown> = { user: userId };
+
+      // status takes precedence over active when both are provided
+      if (status) {
+        if (status === 'active') query.active = true;
+        if (status === 'inactive') query.active = false;
+      } else if (activeFilter !== undefined) {
+        query.active = activeFilter;
+      }
+
+      if (req.query.region) query.region = String(req.query.region);
+      if (req.query.district) query.district = String(req.query.district);
+      if (req.query.product) query.product = String(req.query.product);
+
+      const [alerts, total] = await Promise.all([
+        PriceAlert.find(query)
+          .populate('product', 'name category variety')
+          .sort('-createdAt')
+          .skip(skip)
+          .limit(limit),
+        PriceAlert.countDocuments(query),
+      ]);
+
+      ResponseHandler.paginated(
+        res,
+        alerts,
+        {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+        'Price alerts retrieved'
+      );
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Update a price alert
    * PATCH /api/market-intelligence/alerts/:alertId
    */
   async updatePriceAlert(req: Request, res: Response, next: NextFunction) {
     try {
       const { alertId } = req.params;
       const userId = req.user?.id;
+
+      if (!userId) {
+        throw new AppError('Authentication required', 401);
+      }
 
       const alert = await PriceAlert.findOne({
         _id: alertId,
@@ -141,30 +259,50 @@ class MarketIntelligenceController {
         throw new AppError('Price alert not found', 404);
       }
 
+      const updatePayload: Record<string, unknown> = { ...req.body };
+
+      if (req.body.condition !== undefined || req.body.conditions !== undefined) {
+        updatePayload.condition = this.normalizeAlertCondition(
+          req.body.condition ?? req.body.conditions
+        );
+      }
+
+      if (req.body.notificationChannels !== undefined) {
+        updatePayload.notificationChannels = this.normalizeNotificationChannels(
+          req.body.notificationChannels
+        );
+      }
+
+      if (typeof req.body.isActive === 'boolean' && req.body.active === undefined) {
+        updatePayload.active = req.body.isActive;
+      }
+
+      delete updatePayload.conditions;
+      delete updatePayload.isActive;
+
       const updatedAlert = await PriceAlert.findByIdAndUpdate(
         alertId,
-        { $set: req.body },
+        { $set: updatePayload },
         { new: true, runValidators: true }
       ).populate('product', 'name category variety');
 
-      res.json({
-        success: true,
-        message: 'Price alert updated successfully',
-        data: { alert: updatedAlert },
-      });
+      sendSuccess(res, updatedAlert, 'Price alert updated successfully');
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Delete a price alert
    * DELETE /api/market-intelligence/alerts/:alertId
    */
   async deletePriceAlert(req: Request, res: Response, next: NextFunction) {
     try {
       const { alertId } = req.params;
       const userId = req.user?.id;
+
+      if (!userId) {
+        throw new AppError('Authentication required', 401);
+      }
 
       const alert = await PriceAlert.findOneAndDelete({
         _id: alertId,
@@ -175,35 +313,28 @@ class MarketIntelligenceController {
         throw new AppError('Price alert not found', 404);
       }
 
-      res.json({
-        success: true,
-        message: 'Price alert deleted successfully',
-      });
+      sendSuccess(res, null, 'Price alert deleted successfully');
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Check price alerts manually (for testing/admin)
    * POST /api/market-intelligence/alerts/check
-   * Note: This triggers manual regeneration of insights which will check alerts
    */
   async checkPriceAlerts(_req: Request, res: Response, next: NextFunction) {
     try {
-      // Trigger insight generation for all products, which will check alerts
-      res.json({
-        success: true,
-        message: 'Price alert check scheduled. Insights will be regenerated in background.',
-        data: { status: 'scheduled' },
-      });
+      sendSuccess(
+        res,
+        { status: 'scheduled' },
+        'Price alert check scheduled. Insights will be regenerated in background.'
+      );
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Get comparative market analysis
    * GET /api/market-intelligence/compare
    */
   async getComparativeAnalysis(req: Request, res: Response, next: NextFunction) {
@@ -230,13 +361,10 @@ class MarketIntelligenceController {
         })
       );
 
-      res.json({
-        success: true,
-        data: {
-          product: productId,
-          comparisons,
-          analysisDate: new Date(),
-        },
+      sendSuccess(res, {
+        product: productId,
+        comparisons,
+        analysisDate: new Date(),
       });
     } catch (error) {
       next(error);
@@ -244,7 +372,6 @@ class MarketIntelligenceController {
   }
 
   /**
-   * Get market trends
    * GET /api/market-intelligence/trends
    */
   async getMarketTrends(req: Request, res: Response, next: NextFunction) {
@@ -256,7 +383,7 @@ class MarketIntelligenceController {
       }
 
       const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(period as string));
+      daysAgo.setDate(daysAgo.getDate() - parseInt(period as string, 10));
 
       const trends = await MarketInsight.find({
         product: productId,
@@ -265,13 +392,10 @@ class MarketIntelligenceController {
         .sort('period.start')
         .select('period priceStatistics supplyMetrics prediction');
 
-      res.json({
-        success: true,
-        data: {
-          trends,
-          period: `Last ${period} days`,
-          dataPoints: trends.length,
-        },
+      sendSuccess(res, {
+        trends,
+        period: `Last ${period} days`,
+        dataPoints: trends.length,
       });
     } catch (error) {
       next(error);

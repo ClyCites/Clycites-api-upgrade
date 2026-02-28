@@ -341,8 +341,36 @@ export const expertPortalPaths: Record<string, unknown> = {
       summary: 'List advisories (expert / admin)',
       operationId: 'listAdvisories',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'urgency', in: 'query', schema: { type: 'string', enum: ['info', 'warning', 'critical'] } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'scheduled', 'sent', 'expired'] } }],
+      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'urgency', in: 'query', schema: { type: 'string', enum: ['info', 'warning', 'critical'] } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'submitted', 'approved', 'rejected', 'scheduled', 'sent', 'cancelled'] } }],
       responses: { 200: { description: 'Advisories.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/expert-portal/advisories/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get advisory by ID',
+      operationId: 'getAdvisory',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Advisory details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Expert Portal'],
+      summary: 'Update advisory',
+      operationId: 'updateAdvisory',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { title: { type: 'string' }, message: { type: 'string' }, urgency: { type: 'string', enum: ['low', 'medium', 'high', 'critical', 'emergency'] }, scheduledAt: { type: 'string', format: 'date-time' }, expiresAt: { type: 'string', format: 'date-time' }, targetRegions: { type: 'array', items: { type: 'string' } }, targetCrops: { type: 'array', items: { type: 'string' } }, targetDistricts: { type: 'array', items: { type: 'string' } } } }),
+      responses: { 200: { description: 'Advisory updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Expert Portal'],
+      summary: 'Delete advisory',
+      operationId: 'deleteAdvisory',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Advisory deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 
@@ -355,6 +383,30 @@ export const expertPortalPaths: Record<string, unknown> = {
       security: auth,
       parameters: [idParam],
       responses: { 200: { description: 'Advisory sent.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/expert-portal/advisories/{id}/submit': {
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Submit advisory for review',
+      operationId: 'submitAdvisory',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Advisory submitted for review.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/expert-portal/advisories/{id}/review': {
+    post: {
+      tags: ['Expert Portal', 'Admin'],
+      summary: 'Review advisory submission',
+      description: '`platform_admin` approves or rejects a submitted advisory.',
+      operationId: 'reviewAdvisory',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', required: ['decision'], properties: { decision: { type: 'string', enum: ['approved', 'rejected'] }, reason: { type: 'string' } } }),
+      responses: { 200: { description: 'Review decision recorded.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -462,6 +514,34 @@ export const expertPortalPaths: Record<string, unknown> = {
       parameters: [idParam],
       requestBody: r({ type: 'object', required: ['rating'], properties: { rating: { type: 'integer', minimum: 1, maximum: 5 }, comment: { type: 'string' } } }),
       responses: { 200: { description: 'Rating submitted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/expert-portal/inquiries/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get inquiry by ID',
+      operationId: 'getInquiry',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Inquiry details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Expert Portal'],
+      summary: 'Update inquiry',
+      operationId: 'updateInquiry',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { subject: { type: 'string' }, description: { type: 'string' }, cropType: { type: 'string' }, region: { type: 'string' }, urgency: { type: 'string', enum: ['low', 'medium', 'high', 'critical', 'emergency'] }, status: { type: 'string', enum: ['open', 'assigned', 'in_progress', 'resolved', 'closed'] } } }),
+      responses: { 200: { description: 'Inquiry updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Expert Portal'],
+      summary: 'Delete inquiry',
+      operationId: 'deleteInquiry',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Inquiry deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 

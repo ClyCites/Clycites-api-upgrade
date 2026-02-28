@@ -17,8 +17,11 @@ export interface IFarmerProfile extends Document {
   farmingExperience: number; // Years of experience
   
   // Verification & Compliance
-  verificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'suspended';
+  verificationStatus: 'draft' | 'submitted' | 'verified' | 'rejected';
   verificationLevel: 'basic' | 'intermediate' | 'advanced'; // KYC levels
+  verificationSubmittedAt?: Date;
+  verificationReviewedAt?: Date;
+  verificationReason?: string;
   verifiedAt?: Date;
   verifiedBy?: mongoose.Types.ObjectId; // Admin/verifier
   verificationNotes?: string;
@@ -181,8 +184,8 @@ const FarmerProfileSchema = new Schema<IFarmerProfile>(
     },
     verificationStatus: {
       type: String,
-      enum: ['unverified', 'pending', 'verified', 'rejected', 'suspended'],
-      default: 'unverified',
+      enum: ['draft', 'submitted', 'verified', 'rejected', 'unverified', 'pending', 'suspended'],
+      default: 'draft',
       index: true,
     },
     verificationLevel: {
@@ -190,6 +193,9 @@ const FarmerProfileSchema = new Schema<IFarmerProfile>(
       enum: ['basic', 'intermediate', 'advanced'],
       default: 'basic',
     },
+    verificationSubmittedAt: Date,
+    verificationReviewedAt: Date,
+    verificationReason: String,
     verifiedAt: Date,
     verifiedBy: {
       type: Schema.Types.ObjectId,

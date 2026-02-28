@@ -107,7 +107,6 @@ router.post(
 router.delete(
   '/profiles/:id',
   authenticate,
-  authorize('platform_admin'),
   validate(validators.profileIdValidator),
   FarmersController.deleteProfile.bind(FarmersController)
 );
@@ -150,6 +149,92 @@ router.patch(
   FarmersController.updateFarm.bind(FarmersController)
 );
 
+/**
+ * @route   GET /api/farmers/farms/:farmId
+ * @desc    Get farm by ID
+ * @access  Private
+ */
+router.get(
+  '/farms/:farmId',
+  authenticate,
+  validate(validators.farmIdValidator),
+  FarmersController.getFarm.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/farms/:farmId
+ * @desc    Soft delete farm
+ * @access  Private (Farm owner or Admin)
+ */
+router.delete(
+  '/farms/:farmId',
+  authenticate,
+  validate(validators.farmIdValidator),
+  FarmersController.deleteFarm.bind(FarmersController)
+);
+
+// ==================== PLOTS MANAGEMENT ROUTES ====================
+
+/**
+ * @route   GET /api/farmers/:farmerId/plots
+ * @desc    List all plots for a farmer
+ * @access  Private
+ */
+router.get(
+  '/:farmerId/plots',
+  authenticate,
+  validate(validators.farmerIdValidator),
+  FarmersController.getFarmerPlots.bind(FarmersController)
+);
+
+/**
+ * @route   POST /api/farmers/:farmerId/plots
+ * @desc    Create plot for a farmer
+ * @access  Private (Farmer owner or Admin)
+ */
+router.post(
+  '/:farmerId/plots',
+  authenticate,
+  validate(validators.createPlotValidator),
+  FarmersController.createPlot.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/plots/:plotId
+ * @desc    Get plot by ID
+ * @access  Private
+ */
+router.get(
+  '/plots/:plotId',
+  authenticate,
+  validate(validators.plotIdValidator),
+  FarmersController.getPlot.bind(FarmersController)
+);
+
+/**
+ * @route   PATCH /api/farmers/plots/:plotId
+ * @desc    Update plot
+ * @access  Private
+ */
+router.patch(
+  '/plots/:plotId',
+  authenticate,
+  validate(validators.updatePlotValidator),
+  FarmersController.updatePlot.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/plots/:plotId
+ * @desc    Soft delete plot
+ * @access  Private
+ */
+router.delete(
+  '/plots/:plotId',
+  authenticate,
+  validate(validators.plotIdValidator),
+  FarmersController.deletePlot.bind(FarmersController)
+);
+
 // ==================== PRODUCTION MANAGEMENT ROUTES ====================
 
 /**
@@ -162,6 +247,54 @@ router.post(
   authenticate,
   validate(validators.recordCropProductionValidator),
   FarmersController.recordCropProduction.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/:farmerId/production/crops
+ * @desc    List crop production records for a farmer
+ * @access  Private
+ */
+router.get(
+  '/:farmerId/production/crops',
+  authenticate,
+  validate(validators.farmerIdValidator),
+  FarmersController.getFarmerCrops.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/production/crops/:cropId
+ * @desc    Get crop production record by ID
+ * @access  Private
+ */
+router.get(
+  '/production/crops/:cropId',
+  authenticate,
+  validate(validators.cropIdValidator),
+  FarmersController.getCropProduction.bind(FarmersController)
+);
+
+/**
+ * @route   PATCH /api/farmers/production/crops/:cropId
+ * @desc    Update crop production record
+ * @access  Private
+ */
+router.patch(
+  '/production/crops/:cropId',
+  authenticate,
+  validate(validators.updateCropProductionValidator),
+  FarmersController.updateCropProduction.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/production/crops/:cropId
+ * @desc    Soft delete crop production record
+ * @access  Private
+ */
+router.delete(
+  '/production/crops/:cropId',
+  authenticate,
+  validate(validators.cropIdValidator),
+  FarmersController.deleteCropProduction.bind(FarmersController)
 );
 
 /**
@@ -186,6 +319,68 @@ router.get(
   authenticate,
   validate(validators.farmerIdValidator),
   FarmersController.getProduction.bind(FarmersController)
+);
+
+// ==================== INPUTS MANAGEMENT ROUTES ====================
+
+/**
+ * @route   GET /api/farmers/:farmerId/inputs
+ * @desc    List input records for a farmer
+ * @access  Private
+ */
+router.get(
+  '/:farmerId/inputs',
+  authenticate,
+  validate(validators.farmerIdValidator),
+  FarmersController.getFarmerInputs.bind(FarmersController)
+);
+
+/**
+ * @route   POST /api/farmers/:farmerId/inputs
+ * @desc    Create input record for a farmer
+ * @access  Private
+ */
+router.post(
+  '/:farmerId/inputs',
+  authenticate,
+  validate(validators.createInputValidator),
+  FarmersController.createInput.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/inputs/:inputId
+ * @desc    Get input record by ID
+ * @access  Private
+ */
+router.get(
+  '/inputs/:inputId',
+  authenticate,
+  validate(validators.inputIdValidator),
+  FarmersController.getInput.bind(FarmersController)
+);
+
+/**
+ * @route   PATCH /api/farmers/inputs/:inputId
+ * @desc    Update input record
+ * @access  Private
+ */
+router.patch(
+  '/inputs/:inputId',
+  authenticate,
+  validate(validators.updateInputValidator),
+  FarmersController.updateInput.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/inputs/:inputId
+ * @desc    Soft delete input record
+ * @access  Private
+ */
+router.delete(
+  '/inputs/:inputId',
+  authenticate,
+  validate(validators.inputIdValidator),
+  FarmersController.deleteInput.bind(FarmersController)
 );
 
 // ==================== MEMBERSHIP MANAGEMENT ROUTES ====================

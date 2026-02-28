@@ -2,10 +2,21 @@ import mongoose from 'mongoose';
 import FarmerProfile, { IFarmerProfile } from './farmerProfile.model';
 import FarmEnterprise, { IFarmEnterprise } from './farmEnterprise.model';
 import { CropProduction, LivestockProduction, ICropProduction, ILivestockProduction } from './production.model';
+import Plot, { IPlot } from './plot.model';
+import FarmerInput, { IFarmerInput } from './input.model';
 import FarmerMembership, { IFarmerMembership } from './farmerMembership.model';
 import { AuditService } from '../audit';
 import { NotFoundError, BadRequestError } from '../../common/errors/AppError';
 import logger from '../../common/utils/logger';
+
+type FarmerVerificationStatus = 'draft' | 'submitted' | 'verified' | 'rejected';
+
+const STATUS_VARIANTS: Record<FarmerVerificationStatus, string[]> = {
+  draft: ['draft', 'unverified'],
+  submitted: ['submitted', 'pending'],
+  verified: ['verified'],
+  rejected: ['rejected', 'suspended'],
+};
 
 /**
  * Enterprise Farmers Service
@@ -13,6 +24,54 @@ import logger from '../../common/utils/logger';
  */
 
 class FarmersService {
+  private normalizeVerificationStatus(status?: string): FarmerVerificationStatus {
+    switch (status) {
+    case 'submitted':
+    case 'pending':
+      return 'submitted';
+    case 'verified':
+      return 'verified';
+    case 'rejected':
+    case 'suspended':
+      return 'rejected';
+    case 'draft':
+    case 'unverified':
+    default:
+      return 'draft';
+    }
+  }
+
+  private buildVerificationStatusFilter(verificationStatus?: string, verified?: boolean): Record<string, unknown> | undefined {
+    if (verificationStatus) {
+      const normalizedStatus = this.normalizeVerificationStatus(verificationStatus);
+      return { $in: STATUS_VARIANTS[normalizedStatus] };
+    }
+
+    if (verified === undefined) {
+      return undefined;
+    }
+
+    if (verified) {
+      return { $in: STATUS_VARIANTS.verified };
+    }
+
+    return {
+      $in: [
+        ...STATUS_VARIANTS.draft,
+        ...STATUS_VARIANTS.submitted,
+        ...STATUS_VARIANTS.rejected,
+      ],
+    };
+  }
+
+  private normalizeFarmerVerificationFields(farmer: IFarmerProfile): IFarmerProfile {
+    farmer.verificationStatus = this.normalizeVerificationStatus(farmer.verificationStatus);
+    farmer.verificationSubmittedAt = farmer.verificationSubmittedAt || undefined;
+    farmer.verificationReviewedAt = farmer.verificationReviewedAt || farmer.verifiedAt || undefined;
+    farmer.verificationReason = farmer.verificationReason || farmer.rejectionReason || undefined;
+    return farmer;
+  }
+
   // ==================== FARMER PROFILE MANAGEMENT ====================
   
   /**
@@ -33,6 +92,7 @@ class FarmersService {
       const farmerProfile = new FarmerProfile({
         userId,
         ...data,
+        verificationStatus: this.normalizeVerificationStatus(data.verificationStatus),
         createdBy,
         lastModifiedBy: createdBy,
       });
@@ -54,7 +114,7 @@ class FarmersService {
       });
       
       logger.info(`Farmer profile created: ${farmerProfile.farmerCode}`);
-      return farmerProfile;
+      return this.normalizeFarmerVerificationFields(farmerProfile);
     } catch (error: unknown) {
       logger.error('Error creating farmer profile:', error);
       throw error;
@@ -73,16 +133,22 @@ class FarmersService {
       throw new NotFoundError('Farmer profile not found');
     }
     
-    return farmer;
+    return this.normalizeFarmerVerificationFields(farmer);
   }
   
   /**
    * Get farmer profile by user ID
    */
   async getFarmerProfileByUserId(userId: mongoose.Types.ObjectId): Promise<IFarmerProfile | null> {
-    return await FarmerProfile.findOne({ userId, isActive: true })
+    const farmer = await FarmerProfile.findOne({ userId, isActive: true })
       .populate('userId', 'email firstName lastName')
       .populate('organizationMembership.organizationId', 'name');
+
+    if (!farmer) {
+      return null;
+    }
+
+    return this.normalizeFarmerVerificationFields(farmer);
   }
   
   /**
@@ -102,6 +168,9 @@ class FarmersService {
     // Increment version for audit trail
     updates.version = (farmer.version || 1) + 1;
     updates.lastModifiedBy = modifiedBy;
+    if (updates.verificationStatus) {
+      updates.verificationStatus = this.normalizeVerificationStatus(updates.verificationStatus);
+    }
     
     Object.assign(farmer, updates);
     await farmer.save();
@@ -116,7 +185,7 @@ class FarmersService {
       },
     });
     
-    return farmer;
+    return this.normalizeFarmerVerificationFields(farmer);
   }
   
   /**
@@ -124,25 +193,28 @@ class FarmersService {
    */
   async submitForVerification(
     id: mongoose.Types.ObjectId,
-    verificationLevel: 'basic' | 'intermediate' | 'advanced'
+    notes?: string,
+    verificationLevel?: 'basic' | 'intermediate' | 'advanced'
   ): Promise<IFarmerProfile> {
     const farmer = await this.getFarmerProfile(id);
-    
-    // Validate required fields based on verification level
-    if (verificationLevel === 'basic') {
-      if (!farmer.kycData?.nationalIdNumber || !farmer.contactDetails?.primaryPhone) {
-        throw new BadRequestError('Basic verification requires national ID and phone number');
-      }
+
+    const currentStatus = this.normalizeVerificationStatus(farmer.verificationStatus);
+    if (!['draft', 'rejected'].includes(currentStatus)) {
+      throw new BadRequestError('Invalid verification transition: only draft or rejected profiles can be submitted');
     }
-    
-    if (verificationLevel === 'intermediate' || verificationLevel === 'advanced') {
-      if (!farmer.kycData?.nationalIdDocument || !farmer.primaryLocation?.coordinates) {
-        throw new BadRequestError('Higher verification levels require ID document and GPS coordinates');
-      }
+
+    farmer.verificationStatus = 'submitted';
+    farmer.verificationSubmittedAt = new Date();
+    farmer.verificationReviewedAt = undefined;
+    farmer.verificationReason = undefined;
+    farmer.rejectionReason = undefined;
+    if (notes) {
+      farmer.verificationNotes = notes;
     }
-    
-    farmer.verificationStatus = 'pending';
-    farmer.verificationLevel = verificationLevel;
+    if (verificationLevel) {
+      farmer.verificationLevel = verificationLevel;
+    }
+
     await farmer.save();
     
     await AuditService.log({
@@ -151,11 +223,11 @@ class FarmersService {
       resourceId: farmer._id.toString(),
       userId: farmer.userId.toString(),
       details: {
-        metadata: { verificationLevel }
+        metadata: { verificationLevel: farmer.verificationLevel, notes }
       },
     });
     
-    return farmer;
+    return this.normalizeFarmerVerificationFields(farmer);
   }
   
   /**
@@ -164,35 +236,45 @@ class FarmersService {
   async verifyFarmer(
     id: mongoose.Types.ObjectId,
     verifiedBy: mongoose.Types.ObjectId,
-    approved: boolean,
-    notes?: string
+    status: 'verified' | 'rejected',
+    reason?: string
   ): Promise<IFarmerProfile> {
     const farmer = await this.getFarmerProfile(id);
-    
-    if (approved) {
+
+    const currentStatus = this.normalizeVerificationStatus(farmer.verificationStatus);
+    if (currentStatus !== 'submitted') {
+      throw new BadRequestError('Invalid verification transition: only submitted profiles can be verified or rejected');
+    }
+
+    farmer.verificationReviewedAt = new Date();
+    farmer.verificationReason = reason;
+    farmer.verifiedBy = verifiedBy;
+
+    if (status === 'verified') {
       farmer.verificationStatus = 'verified';
-      farmer.verifiedAt = new Date();
-      farmer.verifiedBy = verifiedBy;
-      farmer.verificationNotes = notes;
+      farmer.verifiedAt = farmer.verificationReviewedAt;
+      farmer.verificationNotes = reason;
+      farmer.rejectionReason = undefined;
     } else {
       farmer.verificationStatus = 'rejected';
-      farmer.rejectionReason = notes;
+      farmer.verifiedAt = undefined;
+      farmer.rejectionReason = reason;
     }
     
     await farmer.save();
     
     await AuditService.log({
-      action: approved ? 'farmers.verification_approved' : 'farmers.verification_rejected',
+      action: status === 'verified' ? 'farmers.verification_approved' : 'farmers.verification_rejected',
       resource: 'farmer_profile',
       resourceId: farmer._id.toString(),
       userId: verifiedBy.toString(),
       details: {
-        metadata: { notes }
+        metadata: { reason, status }
       },
-      risk: approved ? 'low' : 'medium',
+      risk: status === 'verified' ? 'low' : 'medium',
     });
     
-    return farmer;
+    return this.normalizeFarmerVerificationFields(farmer);
   }
   
   /**
@@ -203,11 +285,12 @@ class FarmersService {
     limit?: number;
     farmerType?: string;
     verificationStatus?: string;
+    verified?: boolean;
     region?: string;
     district?: string;
     organizationId?: string;
     searchQuery?: string;
-  }): Promise<{ farmers: IFarmerProfile[]; total: number; page: number; pages: number }> {
+  }): Promise<{ farmers: IFarmerProfile[]; total: number; page: number; limit: number; totalPages: number }> {
     const page = options.page || 1;
     const limit = options.limit || 20;
     const skip = (page - 1) * limit;
@@ -216,7 +299,10 @@ class FarmersService {
     const filter: any = { isActive: true };
     
     if (options.farmerType) filter.farmerType = options.farmerType;
-    if (options.verificationStatus) filter.verificationStatus = options.verificationStatus;
+    const verificationFilter = this.buildVerificationStatusFilter(options.verificationStatus, options.verified);
+    if (verificationFilter) {
+      filter.verificationStatus = verificationFilter;
+    }
     if (options.region) filter['primaryLocation.region'] = options.region;
     if (options.district) filter['primaryLocation.district'] = options.district;
     if (options.organizationId) filter['organizationMembership.organizationId'] = options.organizationId;
@@ -235,11 +321,14 @@ class FarmersService {
       FarmerProfile.countDocuments(filter),
     ]);
     
+    const normalizedFarmers = farmers.map((farmer) => this.normalizeFarmerVerificationFields(farmer));
+
     return {
-      farmers,
+      farmers: normalizedFarmers,
       total,
       page,
-      pages: Math.ceil(total / limit),
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
   }
   
@@ -289,6 +378,19 @@ class FarmersService {
     return await FarmEnterprise.find({ farmerId, isActive: true })
       .sort({ createdAt: -1 });
   }
+
+  /**
+   * Get a farm by ID
+   */
+  async getFarmById(id: mongoose.Types.ObjectId): Promise<IFarmEnterprise> {
+    const farm = await FarmEnterprise.findOne({ _id: id, isActive: true });
+
+    if (!farm) {
+      throw new NotFoundError('Farm not found');
+    }
+
+    return farm;
+  }
   
   /**
    * Update farm
@@ -321,6 +423,155 @@ class FarmersService {
     });
     
     return farm;
+  }
+
+  /**
+   * Soft delete farm
+   */
+  async deleteFarm(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const farm = await this.getFarmById(id);
+
+    await farm.softDelete(deletedBy);
+
+    await AuditService.log({
+      action: 'farmers.farm_deleted',
+      resource: 'farm',
+      resourceId: farm._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
+  }
+
+  // ==================== PLOTS MANAGEMENT ====================
+
+  /**
+   * Create a plot for a farmer
+   */
+  async createPlot(
+    farmerId: mongoose.Types.ObjectId,
+    data: Partial<IPlot>,
+    createdBy?: mongoose.Types.ObjectId
+  ): Promise<IPlot> {
+    await this.getFarmerProfile(farmerId);
+
+    if (data.farmId) {
+      const farm = await FarmEnterprise.findOne({
+        _id: data.farmId,
+        farmerId,
+        isActive: true,
+      });
+
+      if (!farm) {
+        throw new NotFoundError('Farm not found or does not belong to this farmer');
+      }
+    }
+
+    const plot = new Plot({
+      farmerId,
+      ...data,
+      createdBy,
+      lastModifiedBy: createdBy,
+    });
+
+    await plot.save();
+
+    await AuditService.log({
+      action: 'farmers.plot_created',
+      resource: 'plot',
+      resourceId: plot._id.toString(),
+      userId: createdBy?.toString(),
+      details: {
+        metadata: {
+          plotName: plot.plotName,
+          farmId: plot.farmId?.toString(),
+        },
+      },
+    });
+
+    return plot;
+  }
+
+  /**
+   * List farmer plots
+   */
+  async getFarmerPlots(farmerId: mongoose.Types.ObjectId): Promise<IPlot[]> {
+    return Plot.find({ farmerId, isActive: true }).sort({ createdAt: -1 });
+  }
+
+  /**
+   * Get plot by ID
+   */
+  async getPlot(id: mongoose.Types.ObjectId): Promise<IPlot> {
+    const plot = await Plot.findOne({ _id: id, isActive: true });
+
+    if (!plot) {
+      throw new NotFoundError('Plot not found');
+    }
+
+    return plot;
+  }
+
+  /**
+   * Update plot
+   */
+  async updatePlot(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<IPlot>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<IPlot> {
+    const plot = await this.getPlot(id);
+
+    if (updates.farmId) {
+      const farm = await FarmEnterprise.findOne({
+        _id: updates.farmId,
+        farmerId: plot.farmerId,
+        isActive: true,
+      });
+
+      if (!farm) {
+        throw new NotFoundError('Farm not found or does not belong to this farmer');
+      }
+    }
+
+    updates.version = (plot.version || 1) + 1;
+    updates.lastModifiedBy = modifiedBy;
+
+    Object.assign(plot, updates);
+    await plot.save();
+
+    await AuditService.log({
+      action: 'farmers.plot_updated',
+      resource: 'plot',
+      resourceId: plot._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: { updates: Object.keys(updates) },
+      },
+    });
+
+    return plot;
+  }
+
+  /**
+   * Soft delete plot
+   */
+  async deletePlot(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const plot = await this.getPlot(id);
+    await plot.softDelete(deletedBy);
+
+    await AuditService.log({
+      action: 'farmers.plot_deleted',
+      resource: 'plot',
+      resourceId: plot._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
   }
   
   // ==================== PRODUCTION MANAGEMENT ====================
@@ -449,6 +700,247 @@ class FarmersService {
     }
     
     return { crops, livestock };
+  }
+
+  /**
+   * Get crop production records for a farmer
+   */
+  async getFarmerCrops(
+    farmerId: mongoose.Types.ObjectId,
+    options: {
+      year?: number;
+      season?: string;
+      cropName?: string;
+    } = {}
+  ): Promise<ICropProduction[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: any = { farmerId, isActive: true };
+    if (options.year) filter.year = options.year;
+    if (options.season) filter.season = options.season;
+    if (options.cropName) filter.cropName = options.cropName;
+
+    return CropProduction.find(filter).sort({ createdAt: -1 });
+  }
+
+  /**
+   * Get crop production record by ID
+   */
+  async getCropProduction(id: mongoose.Types.ObjectId): Promise<ICropProduction> {
+    const crop = await CropProduction.findOne({ _id: id, isActive: true });
+    if (!crop) {
+      throw new NotFoundError('Crop production record not found');
+    }
+    return crop;
+  }
+
+  /**
+   * Update crop production record
+   */
+  async updateCropProduction(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<ICropProduction>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<ICropProduction> {
+    const crop = await this.getCropProduction(id);
+
+    if (updates.farmId) {
+      const farm = await FarmEnterprise.findOne({
+        _id: updates.farmId,
+        farmerId: crop.farmerId,
+        isActive: true,
+      });
+      if (!farm) {
+        throw new NotFoundError('Farm not found or does not belong to this farmer');
+      }
+    }
+
+    updates.version = (crop.version || 1) + 1;
+    updates.lastModifiedBy = modifiedBy;
+
+    Object.assign(crop, updates);
+    await crop.save();
+
+    await AuditService.log({
+      action: 'farmers.crop_production_updated',
+      resource: 'crop_production',
+      resourceId: crop._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: { updates: Object.keys(updates) },
+      },
+    });
+
+    return crop;
+  }
+
+  /**
+   * Soft delete crop production record
+   */
+  async deleteCropProduction(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const crop = await this.getCropProduction(id);
+
+    crop.isActive = false;
+    crop.deletedAt = new Date();
+    crop.lastModifiedBy = deletedBy;
+    await crop.save();
+
+    await AuditService.log({
+      action: 'farmers.crop_production_deleted',
+      resource: 'crop_production',
+      resourceId: crop._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
+  }
+
+  // ==================== INPUTS MANAGEMENT ====================
+
+  /**
+   * Create input record
+   */
+  async createInput(
+    farmerId: mongoose.Types.ObjectId,
+    data: Partial<IFarmerInput>,
+    createdBy?: mongoose.Types.ObjectId
+  ): Promise<IFarmerInput> {
+    await this.getFarmerProfile(farmerId);
+
+    if (data.farmId) {
+      const farm = await FarmEnterprise.findOne({
+        _id: data.farmId,
+        farmerId,
+        isActive: true,
+      });
+      if (!farm) {
+        throw new NotFoundError('Farm not found or does not belong to this farmer');
+      }
+    }
+
+    if (data.plotId) {
+      const plot = await Plot.findOne({
+        _id: data.plotId,
+        farmerId,
+        isActive: true,
+      });
+      if (!plot) {
+        throw new NotFoundError('Plot not found or does not belong to this farmer');
+      }
+    }
+
+    const input = new FarmerInput({
+      farmerId,
+      ...data,
+      createdBy,
+      lastModifiedBy: createdBy,
+    });
+
+    await input.save();
+
+    await AuditService.log({
+      action: 'farmers.input_created',
+      resource: 'farmer_input',
+      resourceId: input._id.toString(),
+      userId: createdBy?.toString(),
+      details: {
+        metadata: {
+          inputType: input.inputType,
+          inputName: input.inputName,
+        },
+      },
+    });
+
+    return input;
+  }
+
+  /**
+   * List farmer inputs
+   */
+  async getFarmerInputs(farmerId: mongoose.Types.ObjectId): Promise<IFarmerInput[]> {
+    return FarmerInput.find({ farmerId, isActive: true }).sort({ createdAt: -1 });
+  }
+
+  /**
+   * Get input by ID
+   */
+  async getInput(id: mongoose.Types.ObjectId): Promise<IFarmerInput> {
+    const input = await FarmerInput.findOne({ _id: id, isActive: true });
+    if (!input) {
+      throw new NotFoundError('Input not found');
+    }
+    return input;
+  }
+
+  /**
+   * Update input
+   */
+  async updateInput(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<IFarmerInput>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<IFarmerInput> {
+    const input = await this.getInput(id);
+
+    if (updates.farmId) {
+      const farm = await FarmEnterprise.findOne({
+        _id: updates.farmId,
+        farmerId: input.farmerId,
+        isActive: true,
+      });
+      if (!farm) {
+        throw new NotFoundError('Farm not found or does not belong to this farmer');
+      }
+    }
+
+    if (updates.plotId) {
+      const plot = await Plot.findOne({
+        _id: updates.plotId,
+        farmerId: input.farmerId,
+        isActive: true,
+      });
+      if (!plot) {
+        throw new NotFoundError('Plot not found or does not belong to this farmer');
+      }
+    }
+
+    updates.version = (input.version || 1) + 1;
+    updates.lastModifiedBy = modifiedBy;
+
+    Object.assign(input, updates);
+    await input.save();
+
+    await AuditService.log({
+      action: 'farmers.input_updated',
+      resource: 'farmer_input',
+      resourceId: input._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: { updates: Object.keys(updates) },
+      },
+    });
+
+    return input;
+  }
+
+  /**
+   * Soft delete input
+   */
+  async deleteInput(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const input = await this.getInput(id);
+    await input.softDelete(deletedBy);
+
+    await AuditService.log({
+      action: 'farmers.input_deleted',
+      resource: 'farmer_input',
+      resourceId: input._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
   }
   
   // ==================== MEMBERSHIP MANAGEMENT ====================
@@ -662,7 +1154,10 @@ class FarmersService {
     const matchStage: Record<string, unknown> = { isActive: true };
     if (filters.region) matchStage['primaryLocation.region'] = filters.region;
     if (filters.district) matchStage['primaryLocation.district'] = filters.district;
-    if (filters.verificationStatus) matchStage.verificationStatus = filters.verificationStatus;
+    const statusFilter = this.buildVerificationStatusFilter(filters.verificationStatus);
+    if (statusFilter) {
+      matchStage.verificationStatus = statusFilter;
+    }
     if (filters.farmerType) matchStage.farmerType = filters.farmerType;
     
     const [totalStats, byRegion, byVerificationStatus] = await Promise.all([

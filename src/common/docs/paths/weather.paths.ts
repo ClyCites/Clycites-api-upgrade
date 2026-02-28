@@ -197,6 +197,18 @@ export const weatherPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/weather/alerts/{id}/escalate': {
+    post: {
+      tags: ['Weather', 'Alerts'],
+      summary: 'Escalate a weather alert',
+      operationId: 'escalateWeatherAlert',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { reason: { type: 'string' }, severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } } }),
+      responses: { 200: { description: 'Alert escalated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
   '/api/v1/weather/org/{orgId}/alerts': {
     get: {
       tags: ['Weather', 'Alerts'],
@@ -331,6 +343,18 @@ export const weatherPaths: Record<string, unknown> = {
       operationId: 'adminGetProviderStatus',
       security: auth,
       responses: { 200: { description: 'Provider health metrics.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/admin/simulate': {
+    post: {
+      tags: ['Weather', 'Admin'],
+      summary: 'Simulate weather alert',
+      description: 'Creates and dispatches a manual alert simulation for testing workflows.',
+      operationId: 'adminSimulateWeatherAlert',
+      security: auth,
+      requestBody: r({ type: 'object', required: ['farmId', 'farmerId', 'alertType', 'severity', 'advisoryMessage'], properties: { farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, farmerId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, alertType: { type: 'string' }, severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] }, advisoryMessage: { type: 'string' }, recommendedActions: { type: 'array', items: { type: 'string' } }, expiresAt: { type: 'string', format: 'date-time' } } }),
+      responses: { 201: { description: 'Simulation alert created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 };
