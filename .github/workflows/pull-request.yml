@@ -37,44 +37,29 @@ jobs:
       - name: Check branch naming
         run: |
           BRANCH_NAME=${{ github.head_ref }}
-          if [[ ! $BRANCH_NAME =~ ^(feature|fix|docs|hotfix|refactor|test)\/[a-z0-9\-]+$ ]]; then
+          if [[ ! $BRANCH_NAME =~ ^(feature|fix|docs|hotfix|refactor|test|ci)\/[a-z0-9\-\/]+$ ]]; then
             echo "Branch name does not follow convention: $BRANCH_NAME"
-            echo "Expected format: feature/*, fix/*, docs/*, hotfix/*, refactor/*, or test/*"
+            echo "Expected format: feature/*, fix/*, docs/*, hotfix/*, refactor/*, test/*, or ci/*"
+            exit 1
+          fi
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-      
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
       
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
       
       - name: Check code changes
-        run: pnpm run lint
+        run: npm run lint
       
       - name: Build changes
-        run: pnpm run build
+        run: npm run build
       
       - name: Run tests
-        run: pnpm test -- --passWithNoTests
+        run: npm test -- --passWithNoTests
       
       - name: Comment PR with build status
         if: always()
@@ -103,31 +88,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-      
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
       
       - name: Install dependencies
-        run: pnpm install
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
       
       - name: Generate coverage report
-        run: pnpm test -- --coverage --passWithNoTests
+        run: npm test -- --coverage --passWithNoTests
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
