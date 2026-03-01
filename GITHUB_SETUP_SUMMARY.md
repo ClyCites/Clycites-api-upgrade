@@ -159,8 +159,8 @@ SLACK_WEBHOOK: https://hooks.slack.com/services/...
 ```yaml
 AWS_REGION: us-east-1
 REGISTRY: ghcr.io
-NODE_VERSION: "20.x"
-PYTHON_VERSION: "3.11"
+NODE_VERSION: "22"
+PNPM_VERSION: "8"
 ```
 
 ### Environment Secrets

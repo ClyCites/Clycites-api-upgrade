@@ -131,10 +131,15 @@ PR workflows will automatically run:
 
 ## Local Development
 
+## Local Development
+
 ### Setup
 ```bash
+# Install pnpm globally (if not already installed)
+npm install -g pnpm@8
+
 # Install dependencies
-npm install
+pnpm install
 
 # Create `.env` from example
 cp .env.example .env
@@ -143,34 +148,34 @@ cp .env.example .env
 ### Development
 ```bash
 # Start development server
-npm run dev
+pnpm run dev
 
 # Run tests
-npm test
+pnpm test
 
 # Run specific test file
-npm test -- auth.middleware.test.js
+pnpm test -- auth.middleware.test.js
 
 # Watch mode
-npm test -- --watch
+pnpm test -- --watch
 
 # Generate coverage
-npm test -- --coverage
+pnpm test -- --coverage
 ```
 
 ### Code Quality
 ```bash
 # Run linting
-npm run lint
+pnpm run lint
 
 # Fix linting issues
-npm run lint:fix
+pnpm run lint:fix
 
 # Type check
-npx tsc --noEmit
+pnpm exec tsc --noEmit
 
 # Build
-npm run build
+pnpm run build
 ```
 
 ## Common Workflow Statuses
@@ -191,28 +196,28 @@ Workflow is still running. Wait for completion.
 
 ### Tests Failing Locally
 ```bash
-# Clean install
-rm -rf node_modules package-lock.json
-npm install
-npm test
+# Clean install with pnpm
+rm -rf node_modules
+pnpm install
+pnpm test
 ```
 
 ### Lint Errors
 ```bash
 # Auto-fix most issues
-npm run lint:fix
+pnpm run lint:fix
 
 # Review remaining errors
-npm run lint
+pnpm run lint
 ```
 
 ### Type Errors
 ```bash
 # Check TypeScript compilation
-npx tsc --noEmit
+pnpm exec tsc --noEmit
 
 # Review specific file
-npx tsc src/file.ts --noEmit
+pnpm exec tsc src/file.ts --noEmit
 ```
 
 ### Docker Build Failing
