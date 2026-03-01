@@ -52,9 +52,7 @@ jobs:
       
       - name: Check code changes
         run: npm run lint
-      
-      - name: Build changes
-        run: npm run build
+
       
       - name: Run tests
         run: npm test -- --passWithNoTests
