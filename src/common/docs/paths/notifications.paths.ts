@@ -171,6 +171,39 @@ export const notificationsPaths: Record<string, unknown> = {
       responses: { 200: { description: 'Retry queued.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
+
+  '/api/v1/notifications/admin/expire-old': {
+    post: {
+      tags: ['Notifications', 'Admin'],
+      summary: 'Expire old notifications',
+      description: 'Marks old unread notifications as expired. `platform_admin` only.',
+      operationId: 'expireOldNotifications',
+      security: auth,
+      responses: { 200: { description: 'Expiry job queued.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/notifications/templates/seed': {
+    post: {
+      tags: ['Notifications', 'Admin'],
+      summary: 'Seed notification templates',
+      description: 'Seeds the default notification template set. `platform_admin` only.',
+      operationId: 'seedNotificationTemplates',
+      security: auth,
+      responses: { 200: { description: 'Templates seeded.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/notifications/preferences/reset': {
+    post: {
+      tags: ['Notifications'],
+      summary: 'Reset notification preferences to defaults',
+      description: 'Resets the authenticated user\'s notification preferences to the platform defaults.',
+      operationId: 'resetNotificationPreferences',
+      security: auth,
+      responses: { 200: { description: 'Preferences reset.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
 };
 
 export const messagingPaths: Record<string, unknown> = {
@@ -181,7 +214,7 @@ export const messagingPaths: Record<string, unknown> = {
       summary: 'List my conversations',
       operationId: 'listConversations',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'type', in: 'query', schema: { type: 'string', enum: ['direct', 'group', 'support', 'expert_consultation', 'order_chat'] } }, { name: 'archived', in: 'query', schema: { type: 'boolean' } }],
+      parameters: [pageParam, limitParam, { name: 'type', in: 'query', schema: { type: 'string', enum: ['farmer_expert', 'buyer_seller', 'support', 'group', 'system'] } }, { name: 'archived', in: 'query', schema: { type: 'boolean' } }],
       responses: { 200: { description: 'Conversations.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/Conversation' } } } }] } } } }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
     post: {
@@ -189,7 +222,18 @@ export const messagingPaths: Record<string, unknown> = {
       summary: 'Create conversation',
       operationId: 'createConversation',
       security: auth,
-      requestBody: r({ type: 'object', required: ['participants', 'type'], properties: { participants: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{24}$' }, minItems: 1 }, type: { type: 'string', enum: ['direct', 'group', 'support', 'expert_consultation', 'order_chat'] }, title: { type: 'string' }, orderId: { type: 'string' } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['participantIds', 'type'],
+        properties: {
+          participantIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{24}$' }, minItems: 1 },
+          type: { type: 'string', enum: ['farmer_expert', 'buyer_seller', 'support', 'group', 'system'] },
+          title: { type: 'string' },
+          contextType: { type: 'string', enum: ['order', 'listing', 'consultation', 'support'] },
+          contextId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          negotiationStatus: { type: 'string', enum: ['open', 'agreed', 'stalled', 'closed'] },
+        },
+      }),
       responses: { 201: { description: 'Conversation created.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Conversation' } } }] } } } }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
@@ -230,7 +274,7 @@ export const messagingPaths: Record<string, unknown> = {
       operationId: 'sendMessage',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', required: ['content'], properties: { content: { type: 'string', maxLength: 4000 }, contentType: { type: 'string', enum: ['text', 'image', 'file', 'audio'], default: 'text' }, attachments: { type: 'array', items: { type: 'string', format: 'uri' } }, replyTo: { type: 'string', pattern: '^[a-f0-9]{24}$' } } }),
+      requestBody: r({ type: 'object', required: ['body'], properties: { body: { type: 'string', maxLength: 4000 }, contentType: { type: 'string', enum: ['text', 'image', 'file', 'audio'], default: 'text' }, attachments: { type: 'array', items: { type: 'string', format: 'uri' } }, replyToId: { type: 'string', pattern: '^[a-f0-9]{24}$' } } }),
       responses: { 201: { description: 'Message sent.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
@@ -257,6 +301,25 @@ export const messagingPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/messaging/conversations/{id}/negotiation-status': {
+    patch: {
+      tags: ['Messaging'],
+      summary: 'Update negotiation status',
+      description: 'For buyer_seller conversations only. Invalid transitions return 400.',
+      operationId: 'updateNegotiationStatus',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: ['open', 'agreed', 'stalled', 'closed'] },
+        },
+      }),
+      responses: { 200: { description: 'Negotiation status updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
   '/api/v1/messaging/messages/{messageId}': {
     patch: {
       tags: ['Messaging'],
@@ -264,7 +327,7 @@ export const messagingPaths: Record<string, unknown> = {
       operationId: 'editMessage',
       security: auth,
       parameters: [{ name: 'messageId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
-      requestBody: r({ type: 'object', required: ['content'], properties: { content: { type: 'string' } } }),
+      requestBody: r({ type: 'object', required: ['body'], properties: { body: { type: 'string' } } }),
       responses: { 200: { description: 'Message updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
     delete: {

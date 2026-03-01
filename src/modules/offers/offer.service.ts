@@ -36,6 +36,21 @@ interface CounterOfferDTO {
 }
 
 export class OfferService {
+  private resolveStatusesForUiStatus(uiStatus: string): string[] {
+    switch (uiStatus) {
+    case 'open':
+      return ['pending'];
+    case 'responded':
+      return ['countered'];
+    case 'shortlisted':
+      return ['accepted'];
+    case 'closed':
+      return ['rejected', 'expired', 'withdrawn', 'superseded'];
+    default:
+      return [];
+    }
+  }
+
   /**
    * Create a new offer for a listing
    */
@@ -487,6 +502,7 @@ export class OfferService {
     filters: {
       type?: 'sent' | 'received';
       status?: string;
+      uiStatus?: 'open' | 'responded' | 'shortlisted' | 'closed';
       listing?: string;
       page?: number;
       limit?: number;
@@ -494,7 +510,7 @@ export class OfferService {
       sortOrder?: 'asc' | 'desc';
     }
   ): Promise<any> {
-    const { type, status, listing, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
+    const { type, status, uiStatus, listing, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = filters;
 
     const query: any = {};
 
@@ -508,7 +524,10 @@ export class OfferService {
     }
 
     // Status filter
-    if (status) {
+    if (uiStatus) {
+      const statuses = this.resolveStatusesForUiStatus(uiStatus);
+      query.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+    } else if (status) {
       query.status = status;
     }
 

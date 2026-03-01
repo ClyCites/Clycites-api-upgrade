@@ -6,7 +6,11 @@
 // Models
 export { default as FarmerProfile } from './farmerProfile.model';
 export { default as FarmEnterprise } from './farmEnterprise.model';
+export { default as Plot } from './plot.model';
+export { default as FarmerInput } from './input.model';
 export { CropProduction, LivestockProduction } from './production.model';
+export { default as GrowthStage } from './growthStage.model';
+export { default as YieldPrediction } from './yieldPrediction.model';
 export { default as FarmerMembership } from './farmerMembership.model';
 
 // Legacy models (for backward compatibility)

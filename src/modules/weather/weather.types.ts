@@ -91,6 +91,13 @@ export enum IngestJobStatus {
   SKIPPED   = 'skipped',
 }
 
+/** Sensor reading lifecycle status for production workspace CRUD */
+export enum SensorReadingStatus {
+  CAPTURED = 'captured',
+  FLAGGED  = 'flagged',
+  VERIFIED = 'verified',
+}
+
 /** Delivery channels for weather alerts */
 export enum DeliveryChannel {
   IN_APP    = 'in_app',
@@ -188,6 +195,12 @@ export interface IWeatherSnapshot {
   farmId: Types.ObjectId;
   profileId: Types.ObjectId;
   timestamp: Date;
+  status: SensorReadingStatus;
+  statusReason?: string;
+  flaggedAt?: Date;
+  flaggedBy?: Types.ObjectId;
+  verifiedAt?: Date;
+  verifiedBy?: Types.ObjectId;
   reading: IWeatherReading;
   dataSource: DataSource;
   providerRef?: string;              // provider's own ID for dedup

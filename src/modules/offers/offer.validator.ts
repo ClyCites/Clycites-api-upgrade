@@ -213,6 +213,11 @@ export const addMessageValidator = [
 ];
 
 export const getOffersQueryValidator = [
+  query('uiStatus')
+    .optional()
+    .isIn(['open', 'responded', 'shortlisted', 'closed'])
+    .withMessage('uiStatus must be one of: open, responded, shortlisted, closed'),
+
   query('status')
     .optional()
     .isIn(['pending', 'countered', 'accepted', 'rejected', 'expired', 'withdrawn', 'superseded'])

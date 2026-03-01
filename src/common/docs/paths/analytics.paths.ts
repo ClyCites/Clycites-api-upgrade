@@ -309,4 +309,19 @@ export const analyticsPaths: Record<string, unknown> = {
       responses: { 200: { description: 'Performance data.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
+
+  '/api/v1/analytics/farmer/{farmerId}': {
+    get: {
+      tags: ['Analytics'],
+      summary: 'Individual farmer performance (admin)',
+      description: 'Returns analytics for a specific farmer. Requires `admin` or `platform_admin` role.',
+      operationId: 'analyticsFarmerPerformance',
+      security: auth,
+      parameters: [
+        { name: 'farmerId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        daysParam,
+      ],
+      responses: { 200: { description: 'Farmer analytics.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
 };

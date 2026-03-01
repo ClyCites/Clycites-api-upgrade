@@ -269,7 +269,7 @@ class DisputeService {
 
     if (!dispute) throw new NotFoundError('Dispute not found');
 
-    const isAdmin    = ['platform_admin', 'admin'].includes(userRole);
+    const isAdmin    = ['platform_admin', 'super_admin', 'admin'].includes(userRole);
     const isInvolved =
       dispute.raisedBy._id.toString() === userId ||
       dispute.respondent._id.toString() === userId ||

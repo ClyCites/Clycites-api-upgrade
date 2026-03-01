@@ -12,6 +12,7 @@ import {
   KnowledgeCategory,
   AdvisoryType,
   UrgencyLevel,
+  InquiryStatus,
 } from './expert.types';
 
 // ── Common helpers ──────────────────────────────────────────────────────────
@@ -174,6 +175,17 @@ export const emergencyAlertSchema = [
   body('relatedReport').optional().isMongoId(),
 ];
 
+export const reviewAdvisorySchema = [
+  mongoId('id'),
+  body('decision')
+    .isIn(['approved', 'rejected'])
+    .withMessage('decision must be approved or rejected'),
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ max: 1000 }),
+];
+
 // ── Farmer Inquiries ─────────────────────────────────────────────────────────
 
 export const createInquirySchema = [
@@ -185,6 +197,17 @@ export const createInquirySchema = [
   body('category').isIn(Object.values(KnowledgeCategory))
     .withMessage('Invalid inquiry category'),
   body('relatedReport').optional().isMongoId(),
+];
+
+export const updateInquirySchema = [
+  mongoId('id'),
+  body('subject').optional().trim().isLength({ min: 5, max: 250 }),
+  body('description').optional().trim().isLength({ min: 20, max: 5000 }),
+  body('cropType').optional().trim(),
+  body('region').optional().trim(),
+  body('urgency').optional().isIn(Object.values(UrgencyLevel)),
+  body('category').optional().isIn(Object.values(KnowledgeCategory)),
+  body('status').optional().isIn(Object.values(InquiryStatus)),
 ];
 
 export const respondToInquirySchema = [

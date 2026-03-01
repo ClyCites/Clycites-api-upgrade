@@ -64,7 +64,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    SCALAR_METRICS,
     dimensions: [...ALL_TIME_DIMENSIONS, ...ALL_GEO_DIMENSIONS, DimensionType.PRODUCT, DimensionType.CATEGORY, DimensionType.STATUS],
-    permissions: { allowedRoles: ['farmer', 'buyer', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'buyer', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.MARKET_LISTINGS_ACTIVITY]: {
@@ -82,7 +82,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    SCALAR_METRICS,
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.STATUS, DimensionType.PRODUCT, DimensionType.CATEGORY],
-    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.MARKET_PRICE_TRENDS]: {
@@ -98,7 +98,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.AVG, MetricType.MIN, MetricType.MAX, MetricType.PERCENT_CHANGE, MetricType.ROLLING_AVG_7D, MetricType.ROLLING_AVG_30D],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.PRODUCT, DimensionType.CATEGORY],
-    permissions: { allowedRoles: ['farmer', 'buyer', 'admin', 'platform_admin', 'org_admin', 'expert'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'buyer', 'admin', 'platform_admin', 'super_admin', 'org_admin', 'expert'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.MARKET_DEMAND_SUPPLY]: {
@@ -113,7 +113,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.SUM, MetricType.AVG],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.PRODUCT],
-    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
+    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
   },
 
   // ── Farmers & Adoption ────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.DISTINCT_COUNT],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.DISTRICT, DimensionType.STATUS],
-    permissions: { allowedRoles: ['admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
+    permissions: { allowedRoles: ['admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
   },
 
   [DatasetId.FARMER_PROFILES]: {
@@ -149,7 +149,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.AVG, MetricType.SUM],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.DISTRICT],
-    permissions: { allowedRoles: ['admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
+    permissions: { allowedRoles: ['admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 5 },
   },
 
   [DatasetId.FARM_PRODUCTION]: {
@@ -166,7 +166,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.SUM, MetricType.AVG],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.CROP_TYPE],
-    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: true, allowGlobal: false, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: true, allowGlobal: false, privacyThreshold: 0 },
   },
 
   // ── Pest & Disease ─────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.DISTINCT_COUNT, MetricType.RATE],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.DISTRICT, DimensionType.CROP_TYPE, DimensionType.STATUS, DimensionType.SEVERITY],
-    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 3 },
+    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 3 },
   },
 
   [DatasetId.DISEASE_AI_PERFORMANCE]: {
@@ -205,7 +205,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.AVG, MetricType.MIN, MetricType.MAX, MetricType.RATE],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.STATUS],
-    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin', 'super_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.DISEASE_OUTBREAKS]: {
@@ -223,7 +223,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.SUM, MetricType.AVG, MetricType.RATE],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.CROP_TYPE, DimensionType.SEVERITY],
-    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   // ── Weather & Risk ─────────────────────────────────────────────────────────
@@ -242,7 +242,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.RATE, MetricType.DISTINCT_COUNT],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.ALERT_TYPE, DimensionType.SEVERITY, DimensionType.CROP_TYPE],
-    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.WEATHER_RISK_TRENDS]: {
@@ -259,7 +259,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.AVG, MetricType.MAX, MetricType.COUNT, MetricType.ROLLING_AVG_7D],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.ALERT_TYPE],
-    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'expert', 'admin', 'platform_admin', 'super_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   // ── Orders & Disputes ──────────────────────────────────────────────────────
@@ -278,7 +278,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    SCALAR_METRICS,
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.STATUS],
-    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['farmer', 'admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.ORDERS_DISPUTES]: {
@@ -295,7 +295,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.RATE, MetricType.AVG],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.STATUS],
-    permissions: { allowedRoles: ['admin', 'platform_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['admin', 'platform_admin', 'super_admin', 'org_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   // ── Expert & Advisory ──────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.AVG, MetricType.RATE, MetricType.DISTINCT_COUNT],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.STATUS, DimensionType.EXPERT],
-    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin', 'super_admin'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 
   [DatasetId.ADVISORY_ENGAGEMENT]: {
@@ -328,7 +328,7 @@ const DATASET_REGISTRY: Record<DatasetId, IDatasetDefinition> = {
     ],
     metrics:    [MetricType.COUNT, MetricType.RATE, MetricType.DISTINCT_COUNT],
     dimensions: [...ALL_TIME_DIMENSIONS, DimensionType.REGION, DimensionType.STATUS],
-    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin', 'org_admin', 'farmer'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
+    permissions: { allowedRoles: ['expert', 'admin', 'platform_admin', 'super_admin', 'org_admin', 'farmer'], requiresOrgId: false, requiresFarmerId: false, allowGlobal: true, privacyThreshold: 0 },
   },
 };
 

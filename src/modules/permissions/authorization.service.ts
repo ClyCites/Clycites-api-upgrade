@@ -1,7 +1,10 @@
 import Permission from './permission.model';
 import Role from '../users/role.model';
+import User from '../users/user.model';
+import Organization from '../organizations/organization.model';
 import OrganizationMember from '../organizations/organizationMember.model';
 import AuditService from '../audit/audit.service';
+import { isSuperAdminRole } from '../../common/middleware/superAdmin';
 import {
   NotFoundError,
   ForbiddenError,
@@ -84,6 +87,19 @@ class AuthorizationService {
     organizationId?: string
   ): Promise<string[]> {
     const allPermissions: Set<string> = new Set();
+
+    const user = await User.findById(userId).select('role').lean();
+    if (user && isSuperAdminRole(user.role)) {
+      const systemPermissions = await Permission.find({}).select('name').lean();
+      for (const permission of systemPermissions) {
+        if (permission.name) {
+          allPermissions.add(permission.name);
+        }
+      }
+
+      allPermissions.add('super_admin:all');
+      return Array.from(allPermissions);
+    }
 
     if (organizationId) {
       // Get organization membership
@@ -274,10 +290,9 @@ class AuthorizationService {
    * Check if user is organization owner
    */
   async isOrganizationOwner(userId: string, organizationId: string): Promise<boolean> {
-    const Organization = require('../organizations/organization.model').default;
     const org = await Organization.findById(organizationId);
     
-    return org && org.owner.toString() === userId;
+    return !!org && org.owner.toString() === userId;
   }
 
   /**

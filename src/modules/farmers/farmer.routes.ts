@@ -20,12 +20,12 @@ router.use(authenticate);
 // Farmer Profile Routes
 router.post(
   '/',
-  authorize('farmer'),
+  authorize('farmer' ,'platform_admin'),
   validate(createFarmerProfileValidator),
   farmerController.createProfile
 );
 
-router.get('/me', authorize('farmer'), farmerController.getMyProfile);
+router.get('/me', authorize('farmer' ,'platform_admin'), farmerController.getMyProfile);
 
 router.get(
   '/:id',
@@ -35,7 +35,7 @@ router.get(
 
 router.put(
   '/:id',
-  authorize('farmer', 'admin'),
+  authorize('farmer', 'platform_admin'),
   validate(updateFarmerProfileValidator),
   farmerController.updateProfile
 );
@@ -45,13 +45,14 @@ router.get('/', farmerController.getAllFarmers);
 // Farm Routes
 router.post(
   '/farms',
-  authorize('farmer'),
+  authorize('farmer', 'platform_admin'),
   validate(createFarmValidator),
   farmerController.createFarm
 );
 
 router.get(
   '/:farmerId/farms',
+  authorize('farmer', 'platform_admin'),
   farmerController.getMyFarms
 );
 
@@ -63,14 +64,14 @@ router.get(
 
 router.put(
   '/farms/:id',
-  authorize('farmer', 'admin'),
+  authorize('farmer', 'platform_admin'),
   validate(updateFarmValidator),
   farmerController.updateFarm
 );
 
 router.delete(
   '/farms/:id',
-  authorize('farmer', 'admin'),
+  authorize('farmer', 'platform_admin'),
   validate(farmIdValidator),
   farmerController.deleteFarm
 );

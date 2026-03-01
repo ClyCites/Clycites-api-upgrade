@@ -78,6 +78,28 @@ interface RespondToInquiryDTO {
   closeAfterResponse?: boolean;
 }
 
+interface UpdateAdvisoryDTO {
+  title?: string;
+  message?: string;
+  type?: AdvisoryType;
+  targetCrops?: string[];
+  targetRegions?: string[];
+  targetDistricts?: string[];
+  targetSeasons?: string[];
+  targetUserRoles?: string[];
+  urgency?: UrgencyLevel;
+  specialization?: ExpertSpecialization;
+  scheduledAt?: Date;
+  expiresAt?: Date;
+  channels?: {
+    inApp?: boolean;
+    email?: boolean;
+    sms?: boolean;
+    push?: boolean;
+  };
+  attachmentUrls?: string[];
+}
+
 // =========================================================================
 
 export class AdvisoryService {
@@ -157,6 +179,13 @@ export class AdvisoryService {
       throw new AppError('Advisory already sent', 400);
     }
 
+    if (
+      advisory.status === AdvisoryStatus.SUBMITTED ||
+      advisory.status === AdvisoryStatus.REJECTED
+    ) {
+      throw new AppError('Advisory must be approved before sending', 400);
+    }
+
     // Resolve recipient count (real delivery delegated to notification service)
     const recipientCount = await this.resolveRecipientCount(advisory);
 
@@ -184,6 +213,179 @@ export class AdvisoryService {
     return Object.assign(advisory.toObject(), { recipientCount }) as IAdvisory & {
       recipientCount: number;
     };
+  }
+
+  /**
+   * Get advisory by ID
+   */
+  async getAdvisoryById(advisoryId: string): Promise<IAdvisory> {
+    const advisory = await Advisory.findById(advisoryId).populate('author', 'displayName title');
+    if (!advisory) throw new AppError('Advisory not found', 404);
+    return advisory;
+  }
+
+  /**
+   * Update advisory
+   */
+  async updateAdvisory(
+    advisoryId: string,
+    actorUserId: string,
+    actorRole: string,
+    updates: UpdateAdvisoryDTO
+  ): Promise<IAdvisory> {
+    const advisory = await Advisory.findById(advisoryId);
+    if (!advisory) throw new AppError('Advisory not found', 404);
+
+    const actorExpert = await ExpertProfile.findOne({ user: actorUserId });
+    const actorExpertId = actorExpert?._id?.toString();
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const isOwner = actorExpertId === advisory.author.toString();
+
+    if (!isPrivileged && !isOwner) {
+      throw new AppError('You do not have permission to update this advisory', 403);
+    }
+
+    if (advisory.status === AdvisoryStatus.SENT) {
+      throw new AppError('Sent advisories cannot be updated', 400);
+    }
+
+    if (updates.channels) {
+      advisory.channels = {
+        ...advisory.channels,
+        ...updates.channels,
+      };
+    }
+
+    if (updates.targetCrops) advisory.targetCrops = updates.targetCrops;
+    if (updates.targetRegions) advisory.targetRegions = updates.targetRegions;
+    if (updates.targetDistricts) advisory.targetDistricts = updates.targetDistricts;
+    if (updates.targetSeasons) advisory.targetSeasons = updates.targetSeasons;
+    if (updates.targetUserRoles) advisory.targetUserRoles = updates.targetUserRoles;
+    if (updates.attachmentUrls) advisory.attachmentUrls = updates.attachmentUrls;
+    if (updates.title !== undefined) advisory.title = updates.title;
+    if (updates.message !== undefined) advisory.message = updates.message;
+    if (updates.type !== undefined) advisory.type = updates.type;
+    if (updates.urgency !== undefined) advisory.urgency = updates.urgency;
+    if (updates.specialization !== undefined) advisory.specialization = updates.specialization;
+    if (updates.scheduledAt !== undefined) advisory.scheduledAt = updates.scheduledAt;
+    if (updates.expiresAt !== undefined) advisory.expiresAt = updates.expiresAt;
+
+    await advisory.save();
+
+    await AuditService.log({
+      userId: actorUserId,
+      action: 'ADVISORY_UPDATED',
+      resource: 'Advisory',
+      resourceId: advisoryId,
+      status: 'success',
+    });
+
+    return advisory;
+  }
+
+  /**
+   * Delete advisory
+   */
+  async deleteAdvisory(
+    advisoryId: string,
+    actorUserId: string,
+    actorRole: string
+  ): Promise<void> {
+    const advisory = await Advisory.findById(advisoryId);
+    if (!advisory) throw new AppError('Advisory not found', 404);
+
+    const actorExpert = await ExpertProfile.findOne({ user: actorUserId });
+    const actorExpertId = actorExpert?._id?.toString();
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const isOwner = actorExpertId === advisory.author.toString();
+
+    if (!isPrivileged && !isOwner) {
+      throw new AppError('You do not have permission to delete this advisory', 403);
+    }
+
+    await Advisory.deleteOne({ _id: advisoryId });
+
+    await AuditService.log({
+      userId: actorUserId,
+      action: 'ADVISORY_DELETED',
+      resource: 'Advisory',
+      resourceId: advisoryId,
+      status: 'success',
+    });
+  }
+
+  /**
+   * Submit advisory for review
+   */
+  async submitAdvisory(
+    advisoryId: string,
+    actorUserId: string
+  ): Promise<IAdvisory> {
+    const advisory = await Advisory.findById(advisoryId);
+    if (!advisory) throw new AppError('Advisory not found', 404);
+
+    const actorExpert = await ExpertProfile.findOne({ user: actorUserId });
+    const actorExpertId = actorExpert?._id?.toString();
+    if (!actorExpertId || advisory.author.toString() !== actorExpertId) {
+      throw new AppError('Only the advisory author can submit this advisory', 403);
+    }
+
+    if (
+      advisory.status !== AdvisoryStatus.DRAFT &&
+      advisory.status !== AdvisoryStatus.REJECTED
+    ) {
+      throw new AppError('Only draft or rejected advisories can be submitted', 400);
+    }
+
+    advisory.status = AdvisoryStatus.SUBMITTED;
+    await advisory.save();
+
+    await AuditService.log({
+      userId: actorUserId,
+      action: 'ADVISORY_SUBMITTED',
+      resource: 'Advisory',
+      resourceId: advisoryId,
+      status: 'success',
+    });
+
+    return advisory;
+  }
+
+  /**
+   * Review advisory submission
+   */
+  async reviewAdvisory(
+    advisoryId: string,
+    reviewerUserId: string,
+    decision: 'approved' | 'rejected',
+    reason?: string
+  ): Promise<IAdvisory> {
+    const advisory = await Advisory.findById(advisoryId);
+    if (!advisory) throw new AppError('Advisory not found', 404);
+
+    if (advisory.status !== AdvisoryStatus.SUBMITTED) {
+      throw new AppError('Only submitted advisories can be reviewed', 400);
+    }
+
+    advisory.status =
+      decision === 'approved' ? AdvisoryStatus.APPROVED : AdvisoryStatus.REJECTED;
+
+    if (reason) {
+      advisory.message = `${advisory.message}\n\nReview note: ${reason}`;
+    }
+
+    await advisory.save();
+
+    await AuditService.log({
+      userId: reviewerUserId,
+      action: decision === 'approved' ? 'ADVISORY_APPROVED' : 'ADVISORY_REJECTED',
+      resource: 'Advisory',
+      resourceId: advisoryId,
+      details: { metadata: { reason } },
+      status: 'success',
+    });
+
+    return advisory;
   }
 
   /**
@@ -513,6 +715,113 @@ export class AdvisoryService {
     })
       .sort({ urgency: -1, createdAt: 1 })
       .limit(limit);
+  }
+
+  /**
+   * Get inquiry by ID with access control
+   */
+  async getInquiryById(
+    inquiryId: string,
+    actorUserId: string,
+    actorRole: string
+  ): Promise<IFarmerInquiry> {
+    const inquiry = await FarmerInquiry.findById(inquiryId)
+      .populate('farmer', 'firstName lastName')
+      .populate('assignedExpert', 'displayName title');
+    if (!inquiry) throw new AppError('Inquiry not found', 404);
+
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const farmerId = (inquiry.farmer as { _id?: mongoose.Types.ObjectId })?._id?.toString()
+      ?? inquiry.farmer?.toString();
+    const assignedExpertId = (inquiry.assignedExpert as { _id?: mongoose.Types.ObjectId })?._id?.toString()
+      ?? inquiry.assignedExpert?.toString();
+
+    const isFarmerOwner = farmerId === actorUserId;
+    const actorExpert = await ExpertProfile.findOne({ user: actorUserId });
+    const isAssignedExpert = !!actorExpert && assignedExpertId === actorExpert._id.toString();
+
+    if (!isPrivileged && !isFarmerOwner && !isAssignedExpert) {
+      throw new AppError('You do not have permission to access this inquiry', 403);
+    }
+
+    return inquiry;
+  }
+
+  /**
+   * Update inquiry
+   */
+  async updateInquiry(
+    inquiryId: string,
+    actorUserId: string,
+    actorRole: string,
+    updates: Partial<{
+      subject: string;
+      description: string;
+      cropType: string;
+      region: string;
+      urgency: UrgencyLevel;
+      category: KnowledgeCategory;
+      status: InquiryStatus;
+    }>
+  ): Promise<IFarmerInquiry> {
+    const inquiry = await FarmerInquiry.findById(inquiryId);
+    if (!inquiry) throw new AppError('Inquiry not found', 404);
+
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const isFarmerOwner = inquiry.farmer.toString() === actorUserId;
+
+    if (!isPrivileged && !isFarmerOwner) {
+      throw new AppError('You do not have permission to update this inquiry', 403);
+    }
+
+    if (updates.subject !== undefined) inquiry.subject = updates.subject;
+    if (updates.description !== undefined) inquiry.description = updates.description;
+    if (updates.cropType !== undefined) inquiry.cropType = updates.cropType;
+    if (updates.region !== undefined) inquiry.region = updates.region;
+    if (updates.urgency !== undefined) inquiry.urgency = updates.urgency;
+    if (updates.category !== undefined) inquiry.category = updates.category;
+    if (updates.status !== undefined && isPrivileged) inquiry.status = updates.status;
+
+    await inquiry.save();
+
+    await AuditService.log({
+      userId: actorUserId,
+      action: 'INQUIRY_UPDATED',
+      resource: 'FarmerInquiry',
+      resourceId: inquiryId,
+      status: 'success',
+    });
+
+    return inquiry;
+  }
+
+  /**
+   * Delete inquiry
+   */
+  async deleteInquiry(
+    inquiryId: string,
+    actorUserId: string,
+    actorRole: string
+  ): Promise<void> {
+    const inquiry = await FarmerInquiry.findById(inquiryId);
+    if (!inquiry) throw new AppError('Inquiry not found', 404);
+
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const isFarmerOwner = inquiry.farmer.toString() === actorUserId;
+
+    if (!isPrivileged && !isFarmerOwner) {
+      throw new AppError('You do not have permission to delete this inquiry', 403);
+    }
+
+    await FarmerInquiry.deleteOne({ _id: inquiryId });
+
+    await AuditService.log({
+      userId: actorUserId,
+      action: 'INQUIRY_DELETED',
+      resource: 'FarmerInquiry',
+      resourceId: inquiryId,
+      status: 'success',
+    });
   }
 
   // ---------------------------------------------------------------------------

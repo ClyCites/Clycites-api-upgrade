@@ -30,6 +30,8 @@ const RefreshTokenSchema = new Schema<IRefreshToken>(
       type: Boolean,
       default: false,
     },
+    revokedAt: Date,
+    deviceId: String,
   },
   {
     timestamps: true,

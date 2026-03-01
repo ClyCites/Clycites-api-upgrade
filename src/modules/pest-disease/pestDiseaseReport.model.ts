@@ -337,15 +337,14 @@ const PestDiseaseReportSchema = new Schema<IPestDiseaseReport>(
     // Images
     images: {
       type: [ImageMetadataSchema],
-      required: true,
+      default: [],
       validate: {
-        validator: (imgs: IImageMetadata[]) => imgs.length > 0 && imgs.length <= 10,
-        message: 'Must provide 1-10 images'
+        validator: (imgs: IImageMetadata[]) => imgs.length <= 10,
+        message: 'Must provide up to 10 images'
       }
     },
     primaryImage: {
-      type: ImageMetadataSchema,
-      required: true
+      type: ImageMetadataSchema
     },
 
     // AI detection
@@ -385,6 +384,10 @@ const PestDiseaseReportSchema = new Schema<IPestDiseaseReport>(
 
     // Farmer interaction
     farmerNotes: { type: String, maxlength: 2000 },
+    assignmentNotes: { type: String, maxlength: 2000 },
+    assignedTo: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    assignedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    assignedAt: { type: Date },
     actionTaken: { type: String, maxlength: 2000 },
     outcome: {
       isResolved: { type: Boolean, default: false },
@@ -395,6 +398,9 @@ const PestDiseaseReportSchema = new Schema<IPestDiseaseReport>(
       },
       notes: { type: String, maxlength: 2000 }
     },
+    closedAt: { type: Date },
+    closedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    closeReason: { type: String, maxlength: 2000 },
 
     // Audit trail
     isActive: { type: Boolean, default: true, index: true },
@@ -422,6 +428,7 @@ PestDiseaseReportSchema.index({ 'aiDetection.primaryResult.detectedEntity': 1, c
 PestDiseaseReportSchema.index({ 'aiDetection.primaryResult.severityLevel': 1, createdAt: -1 });
 PestDiseaseReportSchema.index({ 'fieldContext.cropType': 1, createdAt: -1 });
 PestDiseaseReportSchema.index({ 'aiDetection.requiresReview': 1, reportStatus: 1 });
+PestDiseaseReportSchema.index({ assignedTo: 1, reportStatus: 1, createdAt: -1 });
 
 // Geospatial index for location-based queries
 PestDiseaseReportSchema.index({ 'fieldContext.farmLocation': '2dsphere' });

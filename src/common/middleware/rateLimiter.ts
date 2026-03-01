@@ -1,6 +1,7 @@
 import rateLimit, { RateLimitRequestHandler } from 'express-rate-limit';
 // import RedisStore from 'rate-limit-redis'; // Uncomment when Redis is configured
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import config from '../config';
 import SecurityEvent from '../../modules/security/securityEvent.model';
 
@@ -12,6 +13,52 @@ const getClientIp = (req: Request): string => {
     req.socket.remoteAddress ||
     '0.0.0.0'
   );
+};
+
+const getRateLimitIdentityKey = (req: Request): string => {
+  if (req.user?.tokenId) {
+    const orgPart = req.user.orgId ? `:org:${req.user.orgId}` : '';
+    return `token:${req.user.tokenId}${orgPart}`;
+  }
+
+  if (req.user?.id) {
+    return `user:${req.user.id}`;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const bearer = authHeader.substring(7).trim();
+
+    if (bearer.startsWith('ct_')) {
+      const tokenPrefix = bearer.split('.')[0];
+      if (tokenPrefix) {
+        return `token:${tokenPrefix}`;
+      }
+    }
+
+    if (bearer.split('.').length === 3) {
+      try {
+        const decoded = jwt.decode(bearer) as {
+          id?: string;
+          tokenId?: string;
+          orgId?: string;
+        } | null;
+
+        if (decoded?.tokenId) {
+          const orgPart = decoded.orgId ? `:org:${decoded.orgId}` : '';
+          return `token:${decoded.tokenId}${orgPart}`;
+        }
+
+        if (decoded?.id) {
+          return `user:${decoded.id}`;
+        }
+      } catch {
+        // Ignore decoding errors and fall back to IP.
+      }
+    }
+  }
+
+  return `ip:${getClientIp(req)}`;
 };
 
 // Helper to log rate limit violation
@@ -44,19 +91,20 @@ const logRateLimitViolation = async (req: Request) => {
 // General API rate limiter
 export const apiLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: (req: Request) => req.user?.apiTokenRateLimit?.requestsPerMinute || config.rateLimit.maxRequests,
   message: {
     success: false,
     error: {
       code: 'TOO_MANY_REQUESTS',
       message: 'Too many requests, please try again later',
     },
+    meta: {},
   },
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => {
-    // Rate limit per user if authenticated, otherwise per IP
-    return req.user?.id || getClientIp(req);
+    // Rate limit per token, then per user, otherwise per IP.
+    return getRateLimitIdentityKey(req);
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -65,6 +113,9 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
       error: {
         code: 'TOO_MANY_REQUESTS',
         message: 'Too many requests, please try again later',
+      },
+      meta: {
+        requestId: req.requestId,
       },
     });
   },
@@ -80,6 +131,7 @@ export const authLimiter: RateLimitRequestHandler = rateLimit({
       code: 'TOO_MANY_AUTH_ATTEMPTS',
       message: 'Too many authentication attempts, please try again later',
     },
+    meta: {},
   },
   skipSuccessfulRequests: true,
   keyGenerator: (req: Request) => {
@@ -120,6 +172,9 @@ export const authLimiter: RateLimitRequestHandler = rateLimit({
         code: 'TOO_MANY_AUTH_ATTEMPTS',
         message: 'Too many authentication attempts. Your account has been temporarily locked for security reasons.',
       },
+      meta: {
+        requestId: req.requestId,
+      },
     });
   },
 });
@@ -135,6 +190,7 @@ export const ipLimiter: RateLimitRequestHandler = rateLimit({
       code: 'IP_RATE_LIMIT_EXCEEDED',
       message: 'Too many requests from this IP address',
     },
+    meta: {},
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -143,6 +199,9 @@ export const ipLimiter: RateLimitRequestHandler = rateLimit({
       error: {
         code: 'IP_RATE_LIMIT_EXCEEDED',
         message: 'Too many requests from this IP address. Please try again later.',
+      },
+      meta: {
+        requestId: req.requestId,
       },
     });
   },
@@ -158,9 +217,10 @@ export const createLimiter: RateLimitRequestHandler = rateLimit({
       code: 'TOO_MANY_REQUESTS',
       message: 'Too many creation requests, please try again later',
     },
+    meta: {},
   },
   keyGenerator: (req: Request) => {
-    return req.user?.id || getClientIp(req);
+    return `create:${getRateLimitIdentityKey(req)}`;
   },
 });
 
@@ -174,9 +234,10 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
       code: 'SENSITIVE_OPERATION_LIMIT',
       message: 'Too many sensitive operations. Please try again later.',
     },
+    meta: {},
   },
   keyGenerator: (req: Request) => {
-    return `sensitive:${req.user?.id || getClientIp(req)}`;
+    return `sensitive:${getRateLimitIdentityKey(req)}`;
   },
   handler: async (req: Request, res: Response) => {
     await logRateLimitViolation(req);
@@ -212,10 +273,14 @@ export const sensitiveLimiter: RateLimitRequestHandler = rateLimit({
         code: 'SENSITIVE_OPERATION_LIMIT',
         message: 'Too many sensitive operations. Please try again later.',
       },
+      meta: {
+        requestId: req.requestId,
+      },
     });
   },
 });
 
 // Export IP getter for use in other modules
 export { getClientIp };
+export { getRateLimitIdentityKey };
 

@@ -4,18 +4,61 @@ import Wallet from './wallet.model';
 import Transaction from './transaction.model';
 import Escrow from './escrow.model';
 import { AppError } from '../../common/errors/AppError';
+import { ResponseHandler } from '../../common/utils/response';
+import AuditService from '../audit/audit.service';
+import { canBypassAuthorization, isSuperAdminRole } from '../../common/middleware/superAdmin';
+import { getClientIp } from '../../common/middleware/rateLimiter';
 
 class PaymentController {
+  private getUserId(req: Request): string {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+    }
+
+    return userId;
+  }
+
+  private async logSensitiveAction(
+    req: Request,
+    action: string,
+    targetId: string | undefined,
+    reason?: string
+  ): Promise<void> {
+    if (!req.user?.id) {
+      return;
+    }
+
+    const userAgentHeader = req.headers['user-agent'];
+    const userAgent = typeof userAgentHeader === 'string' ? userAgentHeader : 'unknown';
+
+    await AuditService.log({
+      action,
+      resource: 'payment',
+      resourceId: targetId,
+      userId: req.user.id,
+      ipAddress: getClientIp(req),
+      userAgent,
+      risk: 'high',
+      details: {
+        metadata: {
+          actorId: req.user.impersonatedBy || req.user.id,
+          targetId,
+          reason,
+          requestId: req.requestId,
+          superAdminMode: isSuperAdminRole(req.user.role),
+        },
+      },
+    });
+  }
+
   /**
    * Get user's wallet
    * GET /api/payments/wallet
    */
   async getWallet(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       let wallet = await Wallet.findOne({ user: userId });
 
@@ -25,14 +68,12 @@ class PaymentController {
           user: userId,
           balance: 0,
           escrowBalance: 0,
+          availableBalance: 0,
           currency: 'UGX',
         });
       }
 
-      res.json({
-        success: true,
-        data: { wallet },
-      });
+      ResponseHandler.success(res, { wallet }, 'Wallet retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -44,16 +85,13 @@ class PaymentController {
    */
   async getTransactions(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { page = 1, limit = 20, type, status } = req.query;
       const skip = (Number(page) - 1) * Number(limit);
 
       const query: Record<string, any> = {
-        $or: [{ sender: userId }, { recipient: userId }],
+        $or: [{ from: userId }, { to: userId }],
       };
 
       if (type) query.type = type;
@@ -64,14 +102,14 @@ class PaymentController {
           .sort('-createdAt')
           .limit(Number(limit))
           .skip(skip)
-          .populate('sender recipient', 'name email')
-          .populate('relatedOrder'),
+          .populate('from to', 'firstName lastName email')
+          .populate('order', 'orderNumber'),
         Transaction.countDocuments(query),
       ]);
 
-      res.json({
-        success: true,
-        data: {
+      ResponseHandler.success(
+        res,
+        {
           transactions,
           pagination: {
             page: Number(page),
@@ -80,7 +118,8 @@ class PaymentController {
             pages: Math.ceil(total / Number(limit)),
           },
         },
-      });
+        'Transactions retrieved successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -92,10 +131,7 @@ class PaymentController {
    */
   async initiateEscrow(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { orderId, amount, sellerId } = req.body;
 
@@ -110,11 +146,9 @@ class PaymentController {
         amount
       );
 
-      res.status(201).json({
-        success: true,
-        message: 'Escrow initiated successfully',
-        data: { escrow },
-      });
+      await this.logSensitiveAction(req, 'payment.escrow_initiated', escrow?._id?.toString(), 'Escrow funded');
+
+      ResponseHandler.created(res, { escrow }, 'Escrow initiated successfully');
     } catch (error) {
       next(error);
     }
@@ -126,12 +160,10 @@ class PaymentController {
    */
   async releaseEscrow(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { escrowId } = req.params;
+      const { releaseReason } = req.body;
       // releaseReason from body is optional, can be used for audit later
 
       const escrow = await Escrow.findById(escrowId).populate('order');
@@ -142,9 +174,12 @@ class PaymentController {
 
       // Verify user is authorized (buyer or admin)
       const order = escrow.order as any;
+      const isAdmin = req.user ? isSuperAdminRole(req.user.role) || req.user.role === 'admin' : false;
+      const bypass = canBypassAuthorization(req, ['super_admin:payments:override']);
       if (
         order.buyer.toString() !== userId &&
-        req.user?.role !== 'admin'
+        !isAdmin &&
+        !bypass
       ) {
         throw new AppError('Not authorized to release this escrow', 403);
       }
@@ -154,11 +189,9 @@ class PaymentController {
         userId
       );
 
-      res.json({
-        success: true,
-        message: 'Escrow released successfully',
-        data: { transaction },
-      });
+      await this.logSensitiveAction(req, 'payment.escrow_released', escrowId, releaseReason);
+
+      ResponseHandler.success(res, { transaction }, 'Escrow released successfully');
     } catch (error) {
       next(error);
     }
@@ -170,10 +203,7 @@ class PaymentController {
    */
   async refundEscrow(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { escrowId } = req.params;
       const { refundReason } = req.body;
@@ -186,25 +216,26 @@ class PaymentController {
 
       // Verify user is authorized (seller, buyer, or admin)
       const order = escrow.order as any;
+      const isAdmin = req.user ? isSuperAdminRole(req.user.role) || req.user.role === 'admin' : false;
+      const bypass = canBypassAuthorization(req, ['super_admin:payments:override']);
       if (
         order.buyer.toString() !== userId &&
         order.seller.toString() !== userId &&
-        req.user?.role !== 'admin'
+        !isAdmin &&
+        !bypass
       ) {
         throw new AppError('Not authorized to refund this escrow', 403);
       }
 
       const transaction = await paymentService.refundEscrow(
         escrowId,
-        userId,
-        refundReason
+        refundReason,
+        userId
       );
 
-      res.json({
-        success: true,
-        message: 'Escrow refunded successfully',
-        data: { transaction },
-      });
+      await this.logSensitiveAction(req, 'payment.escrow_refunded', escrowId, refundReason);
+
+      ResponseHandler.success(res, { transaction }, 'Escrow refunded successfully');
     } catch (error) {
       next(error);
     }
@@ -216,7 +247,7 @@ class PaymentController {
    */
   async getEscrowDetails(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
+      const userId = this.getUserId(req);
       const { escrowId } = req.params;
 
       const escrow = await Escrow.findById(escrowId)
@@ -227,19 +258,19 @@ class PaymentController {
         throw new AppError('Escrow not found', 404);
       }
 
+      const bypass = canBypassAuthorization(req, ['super_admin:payments:override']);
+      const isAdmin = req.user ? isSuperAdminRole(req.user.role) || req.user.role === 'admin' : false;
       // Verify user is involved in escrow
       if (
         escrow.buyer.toString() !== userId &&
         escrow.seller.toString() !== userId &&
-        req.user?.role !== 'admin'
+        !isAdmin &&
+        !bypass
       ) {
         throw new AppError('Not authorized to view this escrow', 403);
       }
 
-      res.json({
-        success: true,
-        data: { escrow },
-      });
+      ResponseHandler.success(res, { escrow }, 'Escrow details retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -251,10 +282,7 @@ class PaymentController {
    */
   async getUserEscrows(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { status = 'active' } = req.query;
 
@@ -271,10 +299,11 @@ class PaymentController {
         .populate('buyer seller', 'name email')
         .sort('-createdAt');
 
-      res.json({
-        success: true,
-        data: { escrows, total: escrows.length },
-      });
+      ResponseHandler.success(
+        res,
+        { escrows, total: escrows.length },
+        'Escrows retrieved successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -286,10 +315,7 @@ class PaymentController {
    */
   async depositFunds(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { amount, paymentMethod, reference } = req.body;
 
@@ -304,21 +330,23 @@ class PaymentController {
         type: 'deposit',
         amount,
         currency: 'UGX',
-        sender: userId,
-        recipient: userId, // Self deposit
+        from: userId,
+        to: userId, // Self deposit
         status: 'pending',
         paymentMethod: paymentMethod || 'mobile_money',
-        reference,
+        externalReference: reference,
+        description: 'Wallet deposit initiated',
         metadata: {
           gateway: 'placeholder',
           note: 'Pending payment gateway integration',
         },
       });
 
-      res.status(201).json({
-        success: true,
-        message: 'Deposit initiated. Complete payment using the provided reference.',
-        data: {
+      await this.logSensitiveAction(req, 'payment.wallet_deposit_initiated', transaction._id.toString());
+
+      ResponseHandler.created(
+        res,
+        {
           transaction,
           paymentInstructions: {
             reference: transaction.transactionNumber,
@@ -327,7 +355,8 @@ class PaymentController {
             // TODO: Add actual payment gateway instructions
           },
         },
-      });
+        'Deposit initiated. Complete payment using the provided reference.'
+      );
     } catch (error) {
       next(error);
     }
@@ -339,10 +368,7 @@ class PaymentController {
    */
   async withdrawFunds(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
 
       const { amount, withdrawalMethod, accountDetails } = req.body;
 
@@ -365,25 +391,30 @@ class PaymentController {
         type: 'withdrawal',
         amount,
         currency: 'UGX',
-        sender: userId,
-        recipient: userId,
+        from: userId,
+        to: userId,
         status: 'pending',
         paymentMethod: withdrawalMethod || 'bank_transfer',
+        description: 'Wallet withdrawal initiated',
+        balanceBefore: wallet.balance,
+        balanceAfter: wallet.balance - amount,
         metadata: {
           accountDetails,
           note: 'Pending withdrawal processing',
         },
-      });
+      } as any);
 
       // Deduct from wallet
       wallet.balance -= amount;
       await wallet.save();
 
-      res.status(201).json({
-        success: true,
-        message: 'Withdrawal initiated. Funds will be processed within 24 hours.',
-        data: { transaction },
-      });
+      await this.logSensitiveAction(req, 'payment.wallet_withdrawal_initiated', transaction._id.toString());
+
+      ResponseHandler.created(
+        res,
+        { transaction },
+        'Withdrawal initiated. Funds will be processed within 24 hours.'
+      );
     } catch (error) {
       next(error);
     }
@@ -404,7 +435,7 @@ class PaymentController {
       // - Update wallet balance
       // - Emit events
 
-      res.json({ success: true, message: 'Webhook received' });
+      ResponseHandler.success(res, null, 'Webhook received');
     } catch (error) {
       next(error);
     }

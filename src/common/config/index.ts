@@ -2,6 +2,18 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const appEnv = process.env.NODE_ENV || 'development';
+
+const getEnv = (key: string, fallback: string): string => process.env[key] || fallback;
+
+const requireInProduction = (key: string, value: string, invalidValues: string[] = []) => {
+  if (appEnv !== 'production') return;
+
+  if (!value || invalidValues.includes(value)) {
+    throw new Error(`${key} must be set to a secure value in production`);
+  }
+};
+
 interface Config {
   app: {
     env: string;
@@ -100,7 +112,7 @@ interface Config {
 
 const config: Config = {
   app: {
-    env: process.env.NODE_ENV || 'development',
+    env: appEnv,
     port: parseInt(process.env.PORT || '5000', 10),
     apiVersion: process.env.API_VERSION || 'v1',
     environment: process.env.ENVIRONMENT || 'Development',
@@ -110,8 +122,8 @@ const config: Config = {
     testUri: process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/clycites_test',
   },
   jwt: {
-    secret: process.env.JWT_SECRET || 'your_jwt_secret',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'your_refresh_secret',
+    secret: getEnv('JWT_SECRET', 'your_jwt_secret'),
+    refreshSecret: getEnv('JWT_REFRESH_SECRET', 'your_refresh_secret'),
     expire: process.env.JWT_EXPIRE || '15m',
     refreshExpire: process.env.JWT_REFRESH_EXPIRE || '7d',
   },
@@ -190,9 +202,13 @@ const config: Config = {
   },
   admin: {
     email: process.env.ADMIN_EMAIL || 'admin@clycites.com',
-    initialPassword: process.env.ADMIN_INITIAL_PASSWORD || 'changeme',
+    initialPassword: getEnv('ADMIN_INITIAL_PASSWORD', 'changeme'),
   },
 
 };
+
+requireInProduction('JWT_SECRET', config.jwt.secret, ['your_jwt_secret']);
+requireInProduction('JWT_REFRESH_SECRET', config.jwt.refreshSecret, ['your_refresh_secret']);
+requireInProduction('ADMIN_INITIAL_PASSWORD', config.admin.initialPassword, ['changeme', 'change_me_on_first_login']);
 
 export default config;

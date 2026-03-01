@@ -26,9 +26,54 @@ interface CreateListingData {
     };
   };
   images?: string[];
+  status?: string;
+  uiStatus?: string;
 }
 
 class ListingService {
+  private toInternalStatus(
+    status?: string
+  ): 'active' | 'pending' | 'sold' | 'expired' | 'cancelled' | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    const normalized = status.trim().toLowerCase();
+    const byUiStatus: Record<string, 'active' | 'pending' | 'sold' | 'expired' | 'cancelled'> = {
+      draft: 'pending',
+      published: 'active',
+      paused: 'cancelled',
+      closed: 'expired',
+    };
+
+    const byNative: Record<string, 'active' | 'pending' | 'sold' | 'expired' | 'cancelled'> = {
+      active: 'active',
+      pending: 'pending',
+      sold: 'sold',
+      expired: 'expired',
+      cancelled: 'cancelled',
+    };
+
+    return byUiStatus[normalized] || byNative[normalized];
+  }
+
+  private validateStatusTransition(
+    currentStatus: IListing['status'],
+    nextStatus: IListing['status']
+  ): void {
+    const transitions: Record<IListing['status'], IListing['status'][]> = {
+      pending: ['pending', 'active', 'cancelled', 'expired'],
+      active: ['active', 'pending', 'sold', 'expired', 'cancelled'],
+      sold: ['sold'],
+      expired: ['expired', 'active'],
+      cancelled: ['cancelled', 'active', 'expired'],
+    };
+
+    if (!transitions[currentStatus].includes(nextStatus)) {
+      throw new BadRequestError(`Invalid listing status transition: ${currentStatus} -> ${nextStatus}`);
+    }
+  }
+
   async createListing(data: CreateListingData): Promise<IListing> {
     // Verify product exists
     const product = await Product.findById(data.product);
@@ -42,9 +87,10 @@ class ListingService {
       throw new NotFoundError('Farmer not found');
     }
 
+    const requestedStatus = this.toInternalStatus(data.uiStatus || data.status);
     const listing = await Listing.create({
       ...data,
-      status: 'active',
+      status: requestedStatus || 'active',
     });
 
     return listing.populate(['product', 'farmer']);
@@ -72,6 +118,11 @@ class ListingService {
     const sort = PaginationUtil.getSortObject(sortBy, sortOrder);
 
     const filter: any = { status: 'active' };
+
+    const requestedStatus = this.toInternalStatus(query.uiStatus || query.status);
+    if (requestedStatus) {
+      filter.status = requestedStatus;
+    }
 
     // Search by text
     if (query.search) {
@@ -168,8 +219,9 @@ class ListingService {
 
     const filter: any = { farmer: farmerId };
 
-    if (query.status) {
-      filter.status = query.status;
+    const requestedStatus = this.toInternalStatus(query.uiStatus || query.status);
+    if (requestedStatus) {
+      filter.status = requestedStatus;
     }
 
     const [listings, total] = await Promise.all([
@@ -195,7 +247,17 @@ class ListingService {
       throw new BadRequestError('You can only update your own listings');
     }
 
-    Object.assign(listing, updateData);
+    const status = this.toInternalStatus(updateData.uiStatus || updateData.status);
+    const safeUpdateData = { ...updateData };
+    delete safeUpdateData.uiStatus;
+
+    if (status) {
+      this.validateStatusTransition(listing.status, status);
+      listing.status = status;
+      delete safeUpdateData.status;
+    }
+
+    Object.assign(listing, safeUpdateData);
     await listing.save();
 
     return listing.populate(['product', 'farmer']);
@@ -204,7 +266,7 @@ class ListingService {
   async updateListingStatus(
     listingId: string,
     farmerId: string,
-    status: 'active' | 'pending' | 'sold' | 'expired' | 'cancelled'
+    status: string
   ): Promise<IListing> {
     const listing = await Listing.findById(listingId);
 
@@ -216,7 +278,13 @@ class ListingService {
       throw new BadRequestError('You can only update your own listings');
     }
 
-    listing.status = status;
+    const nextStatus = this.toInternalStatus(status);
+    if (!nextStatus) {
+      throw new BadRequestError('Invalid listing status');
+    }
+
+    this.validateStatusTransition(listing.status, nextStatus);
+    listing.status = nextStatus;
     await listing.save();
 
     return listing;

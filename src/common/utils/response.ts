@@ -2,10 +2,12 @@ import { Response } from 'express';
 
 export interface ApiResponse<T = any> {
   success: boolean;
-  message: string;
+  message?: string;
   data?: T;
   meta?: {
     timestamp: string;
+    requestId?: string;
+    impersonatedUserId?: string;
     [key: string]: any;
   };
 }
@@ -26,10 +28,34 @@ export interface ApiError {
   };
   meta?: {
     timestamp: string;
+    requestId?: string;
+    impersonatedUserId?: string;
   };
 }
 
 export class ResponseHandler {
+  private static buildMeta(
+    res: Response,
+    meta?: Record<string, any>
+  ): {
+    timestamp: string;
+    requestId?: string;
+    impersonatedUserId?: string;
+    [key: string]: any;
+  } {
+    const req = res.req;
+    const requestId = res.locals?.requestId || req?.requestId;
+    const impersonatedUserId =
+      req?.user?.impersonatedBy && req?.user?.id ? req.user.id : undefined;
+
+    return {
+      timestamp: new Date().toISOString(),
+      ...(requestId ? { requestId } : {}),
+      ...(impersonatedUserId ? { impersonatedUserId } : {}),
+      ...(meta || {}),
+    };
+  }
+
   static success<T>(
     res: Response,
     data: T,
@@ -41,10 +67,7 @@ export class ResponseHandler {
       success: true,
       message,
       data,
-      meta: {
-        timestamp: new Date().toISOString(),
-        ...meta,
-      },
+      meta: this.buildMeta(res, meta),
     };
 
     return res.status(statusCode).json(response);
@@ -81,9 +104,7 @@ export class ResponseHandler {
         message,
         details,
       },
-      meta: {
-        timestamp: new Date().toISOString(),
-      },
+      meta: this.buildMeta(res),
     };
 
     return res.status(statusCode).json(response);

@@ -75,6 +75,14 @@ export const createRatingValidator = [
     .optional()
     .isArray()
     .withMessage('Images must be an array'),
+  body('status')
+    .optional()
+    .isIn(['pending', 'approved', 'rejected', 'flagged', 'draft', 'published', 'hidden'])
+    .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'hidden'])
+    .withMessage('Invalid uiStatus'),
 ];
 
 export const addSellerResponseValidator = [
@@ -118,6 +126,14 @@ export const getUserRatingsValidator = [
     .optional()
     .isIn(['buyer', 'seller'])
     .withMessage('Role must be either buyer or seller'),
+  query('status')
+    .optional()
+    .isIn(['pending', 'approved', 'rejected', 'flagged'])
+    .withMessage('Invalid status'),
+  query('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'hidden'])
+    .withMessage('Invalid uiStatus'),
   
   query('page')
     .optional()
@@ -136,4 +152,71 @@ export const getReputationScoreValidator = [
     .withMessage('User ID is required')
     .isMongoId()
     .withMessage('Invalid user ID'),
+];
+
+export const ratingIdValidator = [
+  param('ratingId')
+    .notEmpty()
+    .withMessage('Rating ID is required')
+    .isMongoId()
+    .withMessage('Invalid rating ID'),
+];
+
+export const updateRatingValidator = [
+  ...ratingIdValidator,
+  body('overallRating')
+    .optional()
+    .isFloat({ min: 1, max: 5 })
+    .withMessage('overallRating must be between 1 and 5'),
+  body('categoryRatings')
+    .optional()
+    .isObject()
+    .withMessage('categoryRatings must be an object'),
+  body('review')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 10, max: 2000 })
+    .withMessage('review must be between 10 and 2000 characters'),
+  body('pros')
+    .optional()
+    .isArray()
+    .withMessage('pros must be an array'),
+  body('cons')
+    .optional()
+    .isArray()
+    .withMessage('cons must be an array'),
+  body('wouldRecommend')
+    .optional()
+    .isBoolean()
+    .withMessage('wouldRecommend must be a boolean'),
+  body('wouldBuyAgain')
+    .optional()
+    .isBoolean()
+    .withMessage('wouldBuyAgain must be a boolean'),
+  body('images')
+    .optional()
+    .isArray()
+    .withMessage('images must be an array'),
+  body('status')
+    .optional()
+    .isIn(['pending', 'approved', 'rejected', 'flagged', 'draft', 'published', 'hidden'])
+    .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'hidden'])
+    .withMessage('Invalid uiStatus'),
+];
+
+export const moderateRatingValidator = [
+  ...ratingIdValidator,
+  body('status')
+    .isIn(['draft', 'published', 'hidden'])
+    .withMessage('status must be one of draft, published, hidden'),
+  body('reason')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 500 })
+    .withMessage('reason must be between 3 and 500 characters'),
 ];

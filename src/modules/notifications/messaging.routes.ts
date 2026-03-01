@@ -12,6 +12,7 @@ import {
   editMessageValidator,
   addReactionValidator,
   lockConversationValidator,
+  updateNegotiationStatusValidator,
 } from './notification.validator';
 
 const router = Router();
@@ -25,6 +26,7 @@ router.get(  '/conversations/unread',                                           
 router.get(  '/conversations/:id',            validate(conversationIdValidator),       ctrl.getConversation);
 router.post( '/conversations/:id/read',       validate(conversationIdValidator),       ctrl.markConversationRead);
 router.patch('/conversations/:id/archive',    validate(conversationIdValidator),       ctrl.archiveConversation);
+router.patch('/conversations/:id/negotiation-status', validate(updateNegotiationStatusValidator), ctrl.updateNegotiationStatus);
 
 // Moderation: lock / unlock
 router.post(  '/conversations/:id/lock',      authorize('platform_admin', 'expert'),

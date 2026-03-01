@@ -53,6 +53,14 @@ export const createListingValidator = [
     .optional()
     .isISO8601()
     .withMessage('Invalid available until date'),
+  body('status')
+    .optional()
+    .isIn(['active', 'pending', 'sold', 'expired', 'cancelled', 'draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid uiStatus'),
 ];
 
 export const updateListingValidator = [
@@ -80,6 +88,14 @@ export const updateListingValidator = [
     .optional()
     .isArray({ min: 1 })
     .withMessage('At least one delivery option is required'),
+  body('status')
+    .optional()
+    .isIn(['active', 'pending', 'sold', 'expired', 'cancelled', 'draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid uiStatus'),
 ];
 
 export const updateStatusValidator = [
@@ -87,10 +103,20 @@ export const updateStatusValidator = [
     .isMongoId()
     .withMessage('Invalid listing ID'),
   body('status')
-    .notEmpty()
-    .withMessage('Status is required')
-    .isIn(['active', 'sold', 'expired', 'inactive'])
+    .optional()
+    .isIn(['active', 'pending', 'sold', 'expired', 'cancelled', 'draft', 'published', 'paused', 'closed'])
     .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid uiStatus'),
+  body()
+    .custom((value) => {
+      if (!value.status && !value.uiStatus) {
+        throw new Error('Either status or uiStatus is required');
+      }
+      return true;
+    }),
 ];
 
 export const listingIdValidator = [
@@ -120,4 +146,12 @@ export const searchListingsValidator = [
     .optional()
     .isIn(['premium', 'standard', 'economy'])
     .withMessage('Invalid quality'),
+  query('status')
+    .optional()
+    .isIn(['active', 'pending', 'sold', 'expired', 'cancelled', 'draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid status'),
+  query('uiStatus')
+    .optional()
+    .isIn(['draft', 'published', 'paused', 'closed'])
+    .withMessage('Invalid uiStatus'),
 ];

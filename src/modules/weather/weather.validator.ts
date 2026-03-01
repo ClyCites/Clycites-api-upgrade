@@ -8,7 +8,15 @@
  */
 
 import { body, param, query } from 'express-validator';
-import { WeatherUnit, AlertSeverity, AlertType, ForecastHorizon, RuleOperator, DeliveryChannel } from './weather.types';
+import {
+  WeatherUnit,
+  AlertSeverity,
+  AlertType,
+  ForecastHorizon,
+  RuleOperator,
+  DeliveryChannel,
+  SensorReadingStatus,
+} from './weather.types';
 
 // ============================================================================
 // Helper utilities
@@ -304,6 +312,67 @@ export const alertIdValidator = [
   isObjectId('id'),
 ];
 
+export const escalateAlertValidator = [
+  isObjectId('id'),
+  body('reason')
+    .optional()
+    .isString()
+    .withMessage('reason must be a string')
+    .isLength({ max: 1000 })
+    .withMessage('reason must be at most 1000 characters'),
+  body('severity')
+    .optional()
+    .isIn(Object.values(AlertSeverity))
+    .withMessage(`severity must be one of: ${Object.values(AlertSeverity).join(', ')}`),
+];
+
+export const simulateAlertValidator = [
+  body('farmId')
+    .notEmpty()
+    .withMessage('farmId is required')
+    .isMongoId()
+    .withMessage('farmId must be a valid MongoDB ObjectId'),
+  body('farmerId')
+    .notEmpty()
+    .withMessage('farmerId is required')
+    .isMongoId()
+    .withMessage('farmerId must be a valid MongoDB ObjectId'),
+  isOptionalObjectId('organizationId'),
+  body('alertType')
+    .notEmpty()
+    .withMessage('alertType is required')
+    .isIn(Object.values(AlertType))
+    .withMessage(`alertType must be one of: ${Object.values(AlertType).join(', ')}`),
+  body('severity')
+    .notEmpty()
+    .withMessage('severity is required')
+    .isIn(Object.values(AlertSeverity))
+    .withMessage(`severity must be one of: ${Object.values(AlertSeverity).join(', ')}`),
+  body('advisoryMessage')
+    .notEmpty()
+    .withMessage('advisoryMessage is required')
+    .isString()
+    .withMessage('advisoryMessage must be a string')
+    .isLength({ max: 2000 })
+    .withMessage('advisoryMessage must be at most 2000 characters'),
+  body('recommendedActions')
+    .optional()
+    .isArray()
+    .withMessage('recommendedActions must be an array'),
+  body('recommendedActions.*')
+    .optional()
+    .isString()
+    .withMessage('recommendedActions items must be strings'),
+  body('expiresAt')
+    .optional()
+    .isISO8601()
+    .withMessage('expiresAt must be a valid ISO date'),
+  body('triggerRule.ruleName')
+    .optional()
+    .isString()
+    .withMessage('triggerRule.ruleName must be a string'),
+];
+
 // ============================================================================
 // Forecast horizon query
 // ============================================================================
@@ -327,4 +396,69 @@ export const farmIdParamValidator = [
 export const profileIdParamValidator = [
   param('profileId')
     .isMongoId().withMessage('profileId must be a valid MongoDB ObjectId'),
+];
+
+export const readingIdValidator = [
+  param('readingId')
+    .isMongoId().withMessage('readingId must be a valid MongoDB ObjectId'),
+];
+
+export const createConditionValidator = [
+  ...profileIdParamValidator,
+  body('timestamp')
+    .optional()
+    .isISO8601()
+    .withMessage('timestamp must be a valid ISO date'),
+  body('reading.temperatureCelsius')
+    .notEmpty()
+    .withMessage('reading.temperatureCelsius is required')
+    .isFloat({ min: -80, max: 80 })
+    .withMessage('reading.temperatureCelsius must be between -80 and 80'),
+  body('reading.humidity')
+    .notEmpty()
+    .withMessage('reading.humidity is required')
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('reading.humidity must be between 0 and 100'),
+  body('reading.rainfallMm')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.rainfallMm must be a non-negative number'),
+  body('reading.rainfallMmPerHour')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.rainfallMmPerHour must be a non-negative number'),
+  body('reading.windSpeedKph')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.windSpeedKph must be a non-negative number'),
+  body('reading.windDirectionDeg')
+    .optional()
+    .isFloat({ min: 0, max: 360 })
+    .withMessage('reading.windDirectionDeg must be between 0 and 360'),
+  body('status')
+    .optional()
+    .isIn(Object.values(SensorReadingStatus))
+    .withMessage(`status must be one of: ${Object.values(SensorReadingStatus).join(', ')}`),
+];
+
+export const updateConditionValidator = [
+  ...readingIdValidator,
+  body('status')
+    .optional()
+    .isIn(Object.values(SensorReadingStatus))
+    .withMessage(`status must be one of: ${Object.values(SensorReadingStatus).join(', ')}`),
+  body('statusReason')
+    .optional()
+    .isString()
+    .withMessage('statusReason must be a string')
+    .isLength({ max: 1000 })
+    .withMessage('statusReason must be at most 1000 characters'),
+  body('qualityFlags')
+    .optional()
+    .isArray()
+    .withMessage('qualityFlags must be an array'),
+  body('qualityFlags.*')
+    .optional()
+    .isString()
+    .withMessage('qualityFlags items must be strings'),
 ];

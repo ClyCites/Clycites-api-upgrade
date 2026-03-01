@@ -2,15 +2,26 @@ import { Router } from 'express';
 import priceController from './price.controller';
 import { authenticate } from '../../common/middleware/auth';
 import { authorize } from '../../common/middleware/authorize';
+import { blockWhenFeatureFlagEnabled } from '../../common/middleware/featureFlagGuard';
 
 const router = Router();
+const priceFreezeGuard = blockWhenFeatureFlagEnabled('priceFreeze', {
+  overrideScope: 'super_admin:pricing:override',
+  message: 'Price updates are temporarily frozen by platform control',
+});
 
-router.post('/', authenticate, authorize('admin', 'trader'), priceController.addPrice);
+router.post('/', authenticate, priceFreezeGuard, authorize('admin', 'trader'), priceController.addPrice);
 router.get('/', priceController.getPrices);
 
 router.get('/trends', priceController.getPriceTrends);
 router.post('/predict', priceController.predictPrice);
-router.post('/bulk-import', authenticate, authorize('admin', 'trader'), priceController.bulkImportPrices);
+router.post(
+  '/bulk-import',
+  authenticate,
+  priceFreezeGuard,
+  authorize('admin', 'trader'),
+  priceController.bulkImportPrices
+);
 router.get('/historical', priceController.getHistoricalPrices);
 router.get('/top-markets', priceController.getTopMarketsForProduct);
 router.get('/anomalies', priceController.detectPriceAnomalies);
@@ -32,7 +43,7 @@ router.post('/schedule-report', authenticate, priceController.scheduleReport);
 
 router.get('/price-summary/:productId', priceController.getPriceSummary);
 router.get('/:id', priceController.getPriceById);
-router.put('/:id', authenticate, authorize('admin', 'trader'), priceController.updatePrice);
-router.delete('/:id', authenticate, authorize('admin', 'trader'), priceController.deletePrice);
+router.put('/:id', authenticate, priceFreezeGuard, authorize('admin', 'trader'), priceController.updatePrice);
+router.delete('/:id', authenticate, priceFreezeGuard, authorize('admin', 'trader'), priceController.deletePrice);
 
 export default router;

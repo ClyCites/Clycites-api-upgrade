@@ -28,6 +28,7 @@ import {
   ConversationType,
   MessageContentType,
   ModerationStatus,
+  NegotiationStatus,
   ICreateConversationInput,
   ISendMessageInput,
 } from './notification.types';
@@ -40,6 +41,52 @@ import logger from '../../common/utils/logger';
 // ============================================================================
 
 class MessagingService {
+  private resolveNegotiationStatus(conversation: {
+    type?: string;
+    negotiationStatus?: string;
+    isArchived?: boolean;
+    isLocked?: boolean;
+  }): NegotiationStatus | undefined {
+    if (conversation.type !== ConversationType.BUYER_SELLER) {
+      return undefined;
+    }
+
+    if (conversation.negotiationStatus) {
+      return conversation.negotiationStatus as NegotiationStatus;
+    }
+
+    if (conversation.isArchived) {
+      return NegotiationStatus.CLOSED;
+    }
+
+    if (conversation.isLocked) {
+      return NegotiationStatus.STALLED;
+    }
+
+    return NegotiationStatus.OPEN;
+  }
+
+  private withNegotiationUiStatus<T extends Record<string, unknown>>(conversation: T): T & {
+    negotiationStatus?: NegotiationStatus;
+    uiStatus?: NegotiationStatus;
+  } {
+    const resolvedStatus = this.resolveNegotiationStatus(conversation as {
+      type?: string;
+      negotiationStatus?: string;
+      isArchived?: boolean;
+      isLocked?: boolean;
+    });
+
+    if (!resolvedStatus) {
+      return conversation;
+    }
+
+    return {
+      ...conversation,
+      negotiationStatus: resolvedStatus,
+      uiStatus: resolvedStatus,
+    };
+  }
 
   // ── Conversations ─────────────────────────────────────────────────────────
 
@@ -78,6 +125,9 @@ class MessagingService {
       unreadCounts:   {},
       isLocked:       false,
       isArchived:     false,
+      negotiationStatus: input.type === ConversationType.BUYER_SELLER
+        ? input.negotiationStatus || NegotiationStatus.OPEN
+        : undefined,
     });
 
     return conv;
@@ -93,6 +143,10 @@ class MessagingService {
     if (!this.isParticipant(conv, userId)) {
       throw new ForbiddenError('You are not a participant of this conversation');
     }
+    if (conv.type === ConversationType.BUYER_SELLER && !conv.negotiationStatus) {
+      conv.negotiationStatus = this.resolveNegotiationStatus(conv) as NegotiationStatus;
+    }
+
     return conv;
   }
 
@@ -117,7 +171,8 @@ class MessagingService {
         .lean(),
       Conversation.countDocuments(filter),
     ]);
-    return PaginationUtil.buildPaginationResult(data, total, page, limit);
+    const mapped = data.map((conversation) => this.withNegotiationUiStatus(conversation));
+    return PaginationUtil.buildPaginationResult(mapped, total, page, limit);
   }
 
   async archiveConversation(conversationId: string, userId: string): Promise<IConversationDocument> {
@@ -125,6 +180,9 @@ class MessagingService {
     conv.isArchived = true;
     conv.archivedAt = new Date();
     conv.archivedBy = new mongoose.Types.ObjectId(userId);
+    if (conv.type === ConversationType.BUYER_SELLER) {
+      conv.negotiationStatus = NegotiationStatus.CLOSED;
+    }
     await conv.save();
     return conv;
   }
@@ -136,17 +194,75 @@ class MessagingService {
     conv.lockedReason = reason;
     conv.lockedBy     = new mongoose.Types.ObjectId(moderatorId);
     conv.lockedAt     = new Date();
+    if (conv.type === ConversationType.BUYER_SELLER && conv.negotiationStatus !== NegotiationStatus.CLOSED) {
+      conv.negotiationStatus = NegotiationStatus.STALLED;
+    }
     await conv.save();
     return conv;
   }
 
   async unlockConversation(conversationId: string, _moderatorId: string): Promise<IConversationDocument> {
-    const conv = await Conversation.findByIdAndUpdate(
-      new mongoose.Types.ObjectId(conversationId),
-      { $set: { isLocked: false, lockedBy: null, lockedAt: null, lockedReason: null } },
-      { new: true }
-    );
+    const conv = await Conversation.findById(new mongoose.Types.ObjectId(conversationId));
     if (!conv) throw new NotFoundError('Conversation not found');
+    conv.isLocked = false;
+    conv.lockedBy = undefined;
+    conv.lockedAt = undefined;
+    conv.lockedReason = undefined;
+    if (conv.type === ConversationType.BUYER_SELLER && conv.negotiationStatus === NegotiationStatus.STALLED) {
+      conv.negotiationStatus = NegotiationStatus.OPEN;
+    }
+    await conv.save();
+    return conv;
+  }
+
+  async updateNegotiationStatus(
+    conversationId: string,
+    userId: string,
+    status: NegotiationStatus
+  ): Promise<IConversationDocument> {
+    const conv = await this.getConversation(conversationId, userId);
+    if (conv.type !== ConversationType.BUYER_SELLER) {
+      throw new AppError('Negotiation status is only supported for buyer_seller conversations', 400);
+    }
+
+    const currentStatus = this.resolveNegotiationStatus(conv) as NegotiationStatus;
+    const transitions: Record<NegotiationStatus, NegotiationStatus[]> = {
+      [NegotiationStatus.OPEN]: [NegotiationStatus.OPEN, NegotiationStatus.AGREED, NegotiationStatus.STALLED, NegotiationStatus.CLOSED],
+      [NegotiationStatus.STALLED]: [NegotiationStatus.STALLED, NegotiationStatus.OPEN, NegotiationStatus.AGREED, NegotiationStatus.CLOSED],
+      [NegotiationStatus.AGREED]: [NegotiationStatus.AGREED, NegotiationStatus.CLOSED],
+      [NegotiationStatus.CLOSED]: [NegotiationStatus.CLOSED],
+    };
+
+    if (!transitions[currentStatus].includes(status)) {
+      throw new AppError(`Invalid negotiation transition: ${currentStatus} -> ${status}`, 400);
+    }
+
+    conv.negotiationStatus = status;
+
+    if (status === NegotiationStatus.CLOSED) {
+      conv.isArchived = true;
+      conv.archivedAt = conv.archivedAt || new Date();
+      conv.archivedBy = conv.archivedBy || new mongoose.Types.ObjectId(userId);
+      conv.isLocked = false;
+      conv.lockedAt = undefined;
+      conv.lockedBy = undefined;
+      conv.lockedReason = undefined;
+    } else {
+      conv.isArchived = false;
+      conv.archivedAt = undefined;
+      conv.archivedBy = undefined;
+      if (status === NegotiationStatus.STALLED) {
+        conv.isLocked = true;
+        conv.lockedAt = conv.lockedAt || new Date();
+      } else {
+        conv.isLocked = false;
+        conv.lockedAt = undefined;
+        conv.lockedBy = undefined;
+        conv.lockedReason = undefined;
+      }
+    }
+
+    await conv.save();
     return conv;
   }
 

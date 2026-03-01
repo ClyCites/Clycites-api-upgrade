@@ -11,7 +11,7 @@ function buildCtx(req: AuthRequest): IQueryContext {
   const user = req.user!;
   const u = user as any; // orgId extension
   let scope = AccessScope.PERSONAL;
-  if (user.role === 'admin' || user.role === 'platform_admin') scope = AccessScope.PLATFORM_ADMIN;
+  if (['admin', 'platform_admin', 'super_admin'].includes(user.role)) scope = AccessScope.PLATFORM_ADMIN;
   else if (u.orgId || user.role === 'org_admin') scope = AccessScope.ORGANIZATION;
   return { userId: user.id, userRole: user.role, orgId: u.orgId, farmerId: user.farmerId, scope };
 }

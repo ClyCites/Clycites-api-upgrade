@@ -115,6 +115,13 @@ export enum ConversationType {
   SYSTEM            = 'system',             // System-initiated thread
 }
 
+export enum NegotiationStatus {
+  OPEN = 'open',
+  AGREED = 'agreed',
+  STALLED = 'stalled',
+  CLOSED = 'closed',
+}
+
 /** Message content types */
 export enum MessageContentType {
   TEXT     = 'text',
@@ -231,6 +238,10 @@ export interface IConversation {
   isArchived:    boolean;
   archivedAt?:   Date;
   archivedBy?:   Types.ObjectId;
+
+  // Negotiation lifecycle (for buyer_seller threads)
+  negotiationStatus?: NegotiationStatus;
+  uiStatus?: NegotiationStatus;
 
   deletedAt?:    Date;
   createdAt:     Date;
@@ -439,6 +450,7 @@ export interface ICreateConversationInput {
   type:          ConversationType;
   title?:        string;
   participantIds: string[];
+  negotiationStatus?: NegotiationStatus;
   contextType?:  IConversation['contextType'];
   contextId?:    string;
   organizationId?: string;

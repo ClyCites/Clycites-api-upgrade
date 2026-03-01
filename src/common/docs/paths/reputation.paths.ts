@@ -8,27 +8,48 @@ const ratingIdParam = { name: 'ratingId', in: 'path' as const, required: true, s
 const ratingSchema = {
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    raterId: { type: 'string' },
-    ratedUserId: { type: 'string' },
-    orderId: { type: 'string' },
-    score: { type: 'integer', minimum: 1, maximum: 5 },
-    category: { type: 'string', enum: ['buyer', 'seller'] },
-    comment: { type: 'string' },
-    aspects: {
+    _id: { type: 'string' },
+    order: { type: 'string' },
+    offer: { type: 'string' },
+    ratedUser: { type: 'string' },
+    ratedBy: { type: 'string' },
+    raterRole: { type: 'string', enum: ['buyer', 'seller'] },
+    overallRating: { type: 'integer', minimum: 1, maximum: 5 },
+    categoryRatings: {
       type: 'object',
       properties: {
-        quality: { type: 'integer', minimum: 1, maximum: 5 },
+        productQuality: { type: 'integer', minimum: 1, maximum: 5 },
         communication: { type: 'integer', minimum: 1, maximum: 5 },
-        delivery: { type: 'integer', minimum: 1, maximum: 5 },
         packaging: { type: 'integer', minimum: 1, maximum: 5 },
-        valueForMoney: { type: 'integer', minimum: 1, maximum: 5 },
+        delivery: { type: 'integer', minimum: 1, maximum: 5 },
+        pricing: { type: 'integer', minimum: 1, maximum: 5 },
+        professionalism: { type: 'integer', minimum: 1, maximum: 5 },
+        responsiveness: { type: 'integer', minimum: 1, maximum: 5 },
       },
     },
-    sellerResponse: { type: 'string' },
-    helpfulCount: { type: 'integer' },
-    isVerified: { type: 'boolean' },
+    review: { type: 'string' },
+    pros: { type: 'array', items: { type: 'string' } },
+    cons: { type: 'array', items: { type: 'string' } },
+    wouldRecommend: { type: 'boolean' },
+    wouldBuyAgain: { type: 'boolean' },
+    images: { type: 'array', items: { type: 'string' } },
+    verified: { type: 'boolean' },
+    status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'flagged'] },
+    uiStatus: { type: 'string', enum: ['draft', 'published', 'hidden'] },
+    flagReason: { type: 'string' },
+    moderatedBy: { type: 'string' },
+    moderatedAt: { type: 'string', format: 'date-time' },
+    sellerResponse: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        respondedAt: { type: 'string', format: 'date-time' },
+      },
+    },
+    helpful: { type: 'integer' },
+    notHelpful: { type: 'integer' },
     createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
   },
 };
 
@@ -72,7 +93,7 @@ export const reputationPaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         pageParam, limitParam,
-        { name: 'category', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller', 'all'] }, description: 'Filter by rating category.' },
+        { name: 'userType', in: 'query', schema: { type: 'string', enum: ['farmer', 'buyer', 'trader', 'expert'] }, description: 'Filter leaderboard by user type.' },
         { name: 'minRatings', in: 'query', schema: { type: 'integer', default: 5 }, description: 'Minimum number of ratings required.' },
         { name: 'region', in: 'query', schema: { type: 'string' } },
       ],
@@ -92,23 +113,30 @@ export const reputationPaths: Record<string, unknown> = {
       security: auth,
       requestBody: r({
         type: 'object',
-        required: ['orderId', 'ratedUserId', 'score', 'category'],
+        required: ['order', 'overallRating', 'wouldRecommend'],
         properties: {
-          orderId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
-          ratedUserId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
-          score: { type: 'integer', minimum: 1, maximum: 5 },
-          category: { type: 'string', enum: ['buyer', 'seller'] },
-          comment: { type: 'string', maxLength: 1000 },
-          aspects: {
+          order: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          overallRating: { type: 'integer', minimum: 1, maximum: 5 },
+          categoryRatings: {
             type: 'object',
             properties: {
-              quality: { type: 'integer', minimum: 1, maximum: 5 },
+              productQuality: { type: 'integer', minimum: 1, maximum: 5 },
               communication: { type: 'integer', minimum: 1, maximum: 5 },
-              delivery: { type: 'integer', minimum: 1, maximum: 5 },
               packaging: { type: 'integer', minimum: 1, maximum: 5 },
-              valueForMoney: { type: 'integer', minimum: 1, maximum: 5 },
+              delivery: { type: 'integer', minimum: 1, maximum: 5 },
+              pricing: { type: 'integer', minimum: 1, maximum: 5 },
+              professionalism: { type: 'integer', minimum: 1, maximum: 5 },
+              responsiveness: { type: 'integer', minimum: 1, maximum: 5 },
             },
           },
+          review: { type: 'string', maxLength: 2000 },
+          pros: { type: 'array', items: { type: 'string' } },
+          cons: { type: 'array', items: { type: 'string' } },
+          wouldRecommend: { type: 'boolean' },
+          wouldBuyAgain: { type: 'boolean' },
+          images: { type: 'array', items: { type: 'string' } },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'flagged', 'draft', 'published', 'hidden'] },
+          uiStatus: { type: 'string', enum: ['draft', 'published', 'hidden'] },
         },
       }),
       responses: {
@@ -128,8 +156,9 @@ export const reputationPaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         userIdParam, pageParam, limitParam,
-        { name: 'category', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'] } },
-        { name: 'minScore', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 5 } },
+        { name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'approved', 'rejected', 'flagged'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'hidden'] } },
       ],
       responses: {
         200: { description: 'User ratings.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: ratingSchema }, meta: { $ref: '#/components/schemas/PaginationMeta' } } }] } } } },
@@ -162,7 +191,7 @@ export const reputationPaths: Record<string, unknown> = {
       operationId: 'addSellerResponse',
       security: auth,
       parameters: [ratingIdParam],
-      requestBody: r({ type: 'object', required: ['response'], properties: { response: { type: 'string', maxLength: 500 } } }),
+      requestBody: r({ type: 'object', required: ['message'], properties: { message: { type: 'string', maxLength: 1000 } } }),
       responses: {
         200: { description: 'Response added.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -183,6 +212,101 @@ export const reputationPaths: Record<string, unknown> = {
       responses: {
         200: { description: 'Vote recorded.' },
         401: { $ref: '#/components/responses/Unauthorized' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/reputation/ratings/{ratingId}': {
+    get: {
+      tags: ['Reputation'],
+      summary: 'Get rating by ID',
+      operationId: 'getRatingById',
+      security: auth,
+      parameters: [ratingIdParam],
+      responses: {
+        200: {
+          description: 'Rating details.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: ratingSchema } },
+                ],
+              },
+            },
+          },
+        },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Reputation'],
+      summary: 'Update rating',
+      operationId: 'updateRating',
+      security: auth,
+      parameters: [ratingIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          overallRating: { type: 'integer', minimum: 1, maximum: 5 },
+          categoryRatings: { type: 'object' },
+          review: { type: 'string', maxLength: 2000 },
+          pros: { type: 'array', items: { type: 'string' } },
+          cons: { type: 'array', items: { type: 'string' } },
+          wouldRecommend: { type: 'boolean' },
+          wouldBuyAgain: { type: 'boolean' },
+          images: { type: 'array', items: { type: 'string' } },
+          status: { type: 'string', enum: ['pending', 'approved', 'rejected', 'flagged', 'draft', 'published', 'hidden'] },
+          uiStatus: { type: 'string', enum: ['draft', 'published', 'hidden'] },
+        },
+      }),
+      responses: {
+        200: { description: 'Rating updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    delete: {
+      tags: ['Reputation'],
+      summary: 'Delete rating (soft)',
+      operationId: 'deleteRating',
+      security: auth,
+      parameters: [ratingIdParam],
+      responses: {
+        200: { description: 'Rating deleted.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/reputation/ratings/{ratingId}/moderate': {
+    post: {
+      tags: ['Reputation'],
+      summary: 'Moderate rating visibility',
+      operationId: 'moderateRating',
+      security: auth,
+      parameters: [ratingIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: ['draft', 'published', 'hidden'] },
+          reason: { type: 'string' },
+        },
+      }),
+      responses: {
+        200: { description: 'Rating moderated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
         404: { $ref: '#/components/responses/NotFound' },
       },
     },

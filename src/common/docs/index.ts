@@ -23,6 +23,9 @@ import { reputationPaths } from './paths/reputation.paths';
 import { marketIntelligencePaths } from './paths/marketIntelligence.paths';
 import { organizationsPaths } from './paths/organizations.paths';
 import { offersPaths } from './paths/offers.paths';
+import { adminPaths } from './paths/admin.paths';
+import { logisticsPaths } from './paths/logistics.paths';
+import { aggregationPaths } from './paths/aggregation.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -39,7 +42,9 @@ This OpenAPI specification is the **single source of truth** for all REST API en
 
 ## Authentication
 
-Most endpoints require a JWT Bearer token obtained from \`POST /api/v1/auth/login\`.
+Most endpoints require a Bearer token. Supported token classes:
+- JWT access token obtained from \`POST /api/v1/auth/login\`
+- API token secret obtained from \`POST /api/v1/auth/tokens\` (returned once)
 
 \`\`\`http
 Authorization: Bearer <accessToken>
@@ -54,9 +59,8 @@ All responses follow a uniform envelope:
 \`\`\`json
 {
   "success": true,
-  "message": "Human-readable result",
   "data": { ... },
-  "meta": { "timestamp": "2024-01-01T00:00:00.000Z", "pagination": { ... } }
+  "meta": { "requestId": "req_123", "timestamp": "2024-01-01T00:00:00.000Z", "pagination": { ... } }
 }
 \`\`\`
 
@@ -123,6 +127,8 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     { name: 'Market Intelligence', description: 'AI-powered market insights, price recommendations, and intelligence alerts.' },
     { name: 'Audit', description: 'Audit log access — user activity, org events, suspicious activities.' },
     { name: 'Admin', description: 'Platform administration operations (require elevated roles).' },
+    { name: 'Logistics', description: 'Collection points, shipment lifecycle, tracking, and proof of delivery.' },
+    { name: 'Aggregation', description: 'Warehousing aggregation workflows: bins, batches, grading, stock movement, and spoilage.' },
   ],
 
   paths: {
@@ -149,6 +155,9 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...marketIntelligencePaths,
     ...organizationsPaths,
     ...offersPaths,
+    ...adminPaths,
+    ...logisticsPaths,
+    ...aggregationPaths,
   } as OpenAPIV3_1.Document['paths'],
 
   components,

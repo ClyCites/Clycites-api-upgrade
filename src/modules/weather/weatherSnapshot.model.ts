@@ -10,7 +10,7 @@
  */
 
 import mongoose, { Schema } from 'mongoose';
-import { IWeatherSnapshotDocument, DataSource } from './weather.types';
+import { IWeatherSnapshotDocument, DataSource, SensorReadingStatus } from './weather.types';
 
 const weatherReadingSchema = new Schema(
   {
@@ -44,6 +44,17 @@ const weatherSnapshotSchema = new Schema<IWeatherSnapshotDocument>(
       required: true,
     },
     timestamp: { type: Date, required: true },
+    status: {
+      type: String,
+      enum: Object.values(SensorReadingStatus),
+      default: SensorReadingStatus.CAPTURED,
+      index: true,
+    },
+    statusReason: { type: String, default: null },
+    flaggedAt: { type: Date, default: null },
+    flaggedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    verifiedAt: { type: Date, default: null },
+    verifiedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     reading: { type: weatherReadingSchema, required: true },
     dataSource: {
       type: String,

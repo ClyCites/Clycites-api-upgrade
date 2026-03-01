@@ -37,10 +37,38 @@ export const updateStatusValidator = [
     .isMongoId()
     .withMessage('Invalid order ID'),
   body('status')
-    .notEmpty()
-    .withMessage('Status is required')
-    .isIn(['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled'])
+    .optional()
+    .isIn([
+      'pending',
+      'confirmed',
+      'processing',
+      'in_transit',
+      'delivered',
+      'completed',
+      'cancelled',
+      'created',
+      'accepted',
+      'rejected',
+      'fulfilled',
+    ])
     .withMessage('Invalid status'),
+  body('uiStatus')
+    .optional()
+    .isIn(['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'])
+    .withMessage('Invalid uiStatus'),
+  body('reason')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 500 })
+    .withMessage('reason must be between 3 and 500 characters'),
+  body()
+    .custom((value) => {
+      if (!value.status && !value.uiStatus) {
+        throw new Error('Either status or uiStatus is required');
+      }
+      return true;
+    }),
 ];
 
 export const cancelOrderValidator = [
@@ -64,8 +92,24 @@ export const orderIdValidator = [
 export const orderQueryValidator = [
   query('status')
     .optional()
-    .isIn(['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled'])
+    .isIn([
+      'pending',
+      'confirmed',
+      'processing',
+      'in_transit',
+      'delivered',
+      'completed',
+      'cancelled',
+      'created',
+      'accepted',
+      'rejected',
+      'fulfilled',
+    ])
     .withMessage('Invalid status'),
+  query('uiStatus')
+    .optional()
+    .isIn(['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'])
+    .withMessage('Invalid uiStatus'),
   query('paymentStatus')
     .optional()
     .isIn(['pending', 'paid', 'refunded', 'failed'])

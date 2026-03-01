@@ -106,11 +106,32 @@ router.get(
   controller.getCurrentConditions
 );
 
+router.post(
+  '/profiles/:profileId/conditions',
+  authenticate,
+  validate(validators.createConditionValidator),
+  controller.createCondition
+);
+
 router.get(
   '/profiles/:profileId/conditions/history',
   authenticate,
   validate(validators.profileIdParamValidator),
   controller.getSnapshotHistory
+);
+
+router.get(
+  '/conditions/:readingId',
+  authenticate,
+  validate(validators.readingIdValidator),
+  controller.getConditionById
+);
+
+router.patch(
+  '/conditions/:readingId',
+  authenticate,
+  validate(validators.updateConditionValidator),
+  controller.updateConditionById
 );
 
 // ============================================================================
@@ -188,6 +209,13 @@ router.post(
   authenticate,
   validate(validators.alertIdValidator),
   controller.dismissAlert
+);
+
+router.post(
+  '/alerts/:id/escalate',
+  authenticate,
+  validate(validators.escalateAlertValidator),
+  controller.escalateAlert
 );
 
 router.get(
@@ -291,6 +319,14 @@ router.get(
   authenticate,
   authorize('platform_admin'),
   controller.getProviderStatus
+);
+
+router.post(
+  '/admin/simulate',
+  authenticate,
+  authorize('platform_admin'),
+  validate(validators.simulateAlertValidator),
+  controller.simulateAlert
 );
 
 export default router;

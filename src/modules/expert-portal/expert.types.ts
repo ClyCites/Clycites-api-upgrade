@@ -115,6 +115,9 @@ export enum AdvisoryType {
 
 export enum AdvisoryStatus {
   DRAFT = 'draft',
+  SUBMITTED = 'submitted',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
   SCHEDULED = 'scheduled',
   SENT = 'sent',
   CANCELLED = 'cancelled',

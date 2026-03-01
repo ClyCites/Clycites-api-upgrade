@@ -90,7 +90,7 @@ export class PaymentService {
       // Create escrow hold transaction
       const transaction = new Transaction({
         from: buyerId,
-        to: 'system', // System holds the escrow
+        to: buyerId, // Held on buyer wallet under escrow balance
         type: 'escrow_hold',
         amount: totalAmount,
         currency: 'UGX',
@@ -249,7 +249,7 @@ export class PaymentService {
 
       // Create refund transaction
       const transaction = new Transaction({
-        from: 'system',
+        from: escrow.buyer,
         to: escrow.buyer,
         type: 'refund',
         amount: totalAmount,

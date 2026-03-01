@@ -49,6 +49,16 @@ export enum ReportStatus {
 }
 
 /**
+ * Frontend workspace-friendly incident lifecycle.
+ */
+export enum WorkspaceIncidentStatus {
+  CREATED  = 'created',
+  ASSIGNED = 'assigned',
+  RESOLVED = 'resolved',
+  CLOSED   = 'closed',
+}
+
+/**
  * Confidence thresholds for AI predictions
  */
 export enum ConfidenceLevel {
@@ -383,6 +393,7 @@ export interface IPestDiseaseReport extends Document {
   // Report metadata
   reportCode: string;             // Auto-generated (PDR-XXXXXX)
   reportStatus: ReportStatus;
+  uiStatus?: WorkspaceIncidentStatus;
   
   // Field context
   fieldContext: IFieldContext;
@@ -391,7 +402,7 @@ export interface IPestDiseaseReport extends Document {
   
   // Images
   images: IImageMetadata[];
-  primaryImage: IImageMetadata;   // Main diagnostic image
+  primaryImage?: IImageMetadata;   // Main diagnostic image
   
   // AI detection
   aiDetection: {
@@ -417,6 +428,10 @@ export interface IPestDiseaseReport extends Document {
   
   // Farmer notes
   farmerNotes?: string;
+  assignmentNotes?: string;
+  assignedTo?: Types.ObjectId;
+  assignedBy?: Types.ObjectId;
+  assignedAt?: Date;
   actionTaken?: string;
   outcome?: {
     isResolved: boolean;
@@ -424,6 +439,9 @@ export interface IPestDiseaseReport extends Document {
     effectiveness: string;        // Poor/Fair/Good/Excellent
     notes?: string;
   };
+  closedAt?: Date;
+  closedBy?: Types.ObjectId;
+  closeReason?: string;
   
   // Audit trail
   isActive: boolean;
@@ -688,6 +706,7 @@ export default {
   DetectionType,
   SeverityLevel,
   ReportStatus,
+  WorkspaceIncidentStatus,
   ConfidenceLevel,
   ImageSource,
   TreatmentMethod,
