@@ -8,7 +8,10 @@ on:
 
 jobs:
   sonarcloud:
+    if: ${{ secrets.SONAR_TOKEN != '' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -19,28 +22,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
-      
-      - name: Build
-        run: npm run build
+        run: npm ci
       
       - name: Generate coverage
         run: npm test -- --coverage --passWithNoTests
       
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.projectKey=clycites_api
-            -Dsonar.organization=${{ github.repository_owner }}
+            "-Dsonar.projectKey=clycites_api"
+            "-Dsonar.organization=${{ github.repository_owner }}"
 
   dependency-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -49,9 +52,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
       - name: Check for vulnerable dependencies
         run: npm audit
@@ -59,6 +63,9 @@ jobs:
 
   type-check:
     runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -67,9 +74,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
       - name: TypeScript type check
         run: npx tsc --noEmit

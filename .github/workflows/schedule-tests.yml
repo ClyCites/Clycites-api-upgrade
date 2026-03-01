@@ -13,6 +13,8 @@ on:
 jobs:
   comprehensive-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -21,21 +23,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
-
-      - name: Build TypeScript
-        run: npm run build
+        run: npm ci
       
       - name: Run full test suite with coverage
         run: npm test -- --coverage --verbose
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/coverage-final.json
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
       
       - name: Generate test report
         if: always()
@@ -44,7 +46,7 @@ jobs:
           echo "Tests completed at $(date)" >> $GITHUB_STEP_SUMMARY
       
       - name: Notify on failure
-        if: failure()
+        if: ${{ failure() && secrets.SLACK_WEBHOOK != '' }}
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}

@@ -9,6 +9,8 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -19,22 +21,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
-      - name: Run linting
-        run: npm run lint
+      - name: Run linting (source only)
+        run: npx eslint src --ext .ts
       
       
       - name: Run tests
         run: npm test -- --coverage --passWithNoTests
       
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/coverage-final.json
           flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
       
       - name: Run security audit

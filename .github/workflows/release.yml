@@ -19,23 +19,35 @@ jobs:
       
       - name: Generate changelog
         id: changelog
+        shell: bash
         run: |
-          CHANGELOG=$(git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --oneline)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREVIOUS_TAG="$(git tag --sort=-creatordate | grep -v "^${CURRENT_TAG}$" | head -n 1 || true)"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG="$(git log "${PREVIOUS_TAG}..${CURRENT_TAG}" --pretty=format:'- %s (%h)')"
+          else
+            CHANGELOG="$(git log "${CURRENT_TAG}" --pretty=format:'- %s (%h)')"
+          fi
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- No changes found."
+          fi
+
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
       
       - name: Create Release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: |
             ## What's Changed
             ${{ steps.changelog.outputs.changelog }}
-          draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
       
       - name: Publish Release Notes

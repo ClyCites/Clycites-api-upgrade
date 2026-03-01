@@ -32,14 +32,28 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        id: config
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" ] && [ -n "${{ vars.AWS_REGION }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Deployment configuration found."
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Missing AWS_ROLE_TO_ASSUME secret or AWS_REGION variable."
+          fi
       
       - name: Configure AWS credentials
+        if: ${{ steps.config.outputs.configured == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
       
       - name: Deploy to AWS
+        if: ${{ steps.config.outputs.configured == 'true' }}
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
@@ -49,12 +63,18 @@ jobs:
           # Example: aws ecs update-service ...
       
       - name: Verify deployment
+        if: ${{ steps.config.outputs.configured == 'true' }}
         run: |
           echo "Verifying deployment health..."
           # Add your health check commands here
+
+      - name: Skip deployment due to missing configuration
+        if: ${{ steps.config.outputs.configured != 'true' }}
+        run: |
+          echo "Deployment skipped: configure AWS_ROLE_TO_ASSUME secret and AWS_REGION variable."
       
       - name: Post deployment notification
-        if: always()
+        if: ${{ always() && secrets.SLACK_WEBHOOK != '' }}
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}

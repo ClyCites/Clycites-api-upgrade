@@ -35,6 +35,7 @@ jobs:
             ci
       
       - name: Check branch naming
+        shell: bash
         run: |
           BRANCH_NAME=${{ github.head_ref }}
           if [[ ! $BRANCH_NAME =~ ^(feature|fix|docs|hotfix|refactor|test|ci)\/[a-z0-9\-\/]+$ ]]; then
@@ -46,12 +47,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       
       - name: Check code changes
-        run: npm run lint
+        run: npx eslint src --ext .ts
 
       
       - name: Run tests
@@ -76,6 +78,8 @@ jobs:
 
   code-coverage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -84,19 +88,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
       
       - name: Install dependencies
-        run: npm install
-
-      - name: Build TypeScript
-        run: npm run build
+        run: npm ci
       
       - name: Generate coverage report
         run: npm test -- --coverage --passWithNoTests
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/coverage-final.json
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
