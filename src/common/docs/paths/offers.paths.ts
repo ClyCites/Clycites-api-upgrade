@@ -15,7 +15,8 @@ const offerSchema = {
     quantity: { type: 'number' },
     unit: { type: 'string' },
     totalAmount: { type: 'number' },
-    status: { type: 'string', enum: ['pending', 'accepted', 'rejected', 'countered', 'withdrawn', 'expired', 'converted_to_order'] },
+    status: { type: 'string', enum: ['pending', 'accepted', 'rejected', 'countered', 'withdrawn', 'expired', 'superseded'] },
+    uiStatus: { type: 'string', enum: ['open', 'responded', 'shortlisted', 'closed'] },
     message: { type: 'string' },
     expiresAt: { type: 'string', format: 'date-time' },
     counterOffer: {
@@ -53,12 +54,50 @@ export const offersPaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         pageParam, limitParam,
-        { name: 'direction', in: 'query', schema: { type: 'string', enum: ['sent', 'received', 'all'], default: 'all' }, description: '`sent` = offers I made; `received` = offers on my listings.' },
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'accepted', 'rejected', 'countered', 'withdrawn', 'expired', 'converted_to_order'] } },
-        { name: 'listingId', in: 'query', schema: { type: 'string' } },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['sent', 'received'] }, description: '`sent` = offers I made; `received` = offers on my listings.' },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'accepted', 'rejected', 'countered', 'withdrawn', 'expired', 'superseded'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['open', 'responded', 'shortlisted', 'closed'] } },
+        { name: 'listing', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
-        200: { description: 'Offer list.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: offerSchema }, meta: { $ref: '#/components/schemas/PaginationMeta' } } }] } } } },
+        200: {
+          description: 'Offer list.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          offers: { type: 'array', items: offerSchema },
+                          pagination: {
+                            type: 'object',
+                            properties: {
+                              total: { type: 'integer' },
+                              page: { type: 'integer' },
+                              limit: { type: 'integer' },
+                              pages: { type: 'integer' },
+                            },
+                          },
+                        },
+                      },
+                      meta: {
+                        type: 'object',
+                        properties: {
+                          pagination: { $ref: '#/components/schemas/PaginationMeta' },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
     },
@@ -82,7 +121,19 @@ export const offersPaths: Record<string, unknown> = {
         },
       }),
       responses: {
-        201: { description: 'Offer submitted.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: offerSchema } }] } } } },
+        201: {
+          description: 'Offer submitted.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         404: { description: 'Listing not found.' },
@@ -128,7 +179,19 @@ export const offersPaths: Record<string, unknown> = {
       security: auth,
       parameters: [offerIdParam],
       responses: {
-        200: { description: 'Offer details.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: offerSchema } }] } } } },
+        200: {
+          description: 'Offer details.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
         404: { $ref: '#/components/responses/NotFound' },
@@ -146,7 +209,19 @@ export const offersPaths: Record<string, unknown> = {
       parameters: [offerIdParam],
       requestBody: r({ type: 'object', required: ['offerPrice', 'quantity'], properties: { offerPrice: { type: 'number', minimum: 0.01 }, quantity: { type: 'number', minimum: 0.01 }, message: { type: 'string', maxLength: 500 } } }),
       responses: {
-        200: { description: 'Counter-offer submitted.' },
+        201: {
+          description: 'Counter-offer submitted.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
@@ -165,7 +240,30 @@ export const offersPaths: Record<string, unknown> = {
       parameters: [offerIdParam],
       requestBody: r({ type: 'object', properties: { message: { type: 'string' } } }),
       responses: {
-        200: { description: 'Offer accepted. An order has been created.', content: { 'application/json': { schema: { type: 'object', properties: { offerId: { type: 'string' }, orderId: { type: 'string' } } } } } },
+        200: {
+          description: 'Offer accepted. An order has been created.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          offer: offerSchema,
+                          order: { $ref: '#/components/schemas/Order' },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
@@ -182,7 +280,19 @@ export const offersPaths: Record<string, unknown> = {
       parameters: [offerIdParam],
       requestBody: r({ type: 'object', properties: { reason: { type: 'string', maxLength: 300 } } }),
       responses: {
-        200: { description: 'Offer rejected.' },
+        200: {
+          description: 'Offer rejected.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
       },
@@ -199,7 +309,19 @@ export const offersPaths: Record<string, unknown> = {
       parameters: [offerIdParam],
       requestBody: r({ type: 'object', properties: { reason: { type: 'string' } } }),
       responses: {
-        200: { description: 'Offer withdrawn.' },
+        200: {
+          description: 'Offer withdrawn.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         400: { description: 'Offer cannot be withdrawn in its current state.' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
@@ -214,9 +336,21 @@ export const offersPaths: Record<string, unknown> = {
       operationId: 'addOfferMessage',
       security: auth,
       parameters: [offerIdParam],
-      requestBody: r({ type: 'object', required: ['content'], properties: { content: { type: 'string', maxLength: 1000 } } }),
+      requestBody: r({ type: 'object', required: ['message'], properties: { message: { type: 'string', maxLength: 1000 } } }),
       responses: {
-        201: { description: 'Message sent.' },
+        200: {
+          description: 'Message sent.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'object', properties: { offer: offerSchema } } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
       },
@@ -231,7 +365,19 @@ export const offersPaths: Record<string, unknown> = {
       security: auth,
       parameters: [offerIdParam],
       responses: {
-        200: { description: 'Messages marked as read.' },
+        200: {
+          description: 'Messages marked as read.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'null' } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
     },

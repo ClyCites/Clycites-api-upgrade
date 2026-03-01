@@ -750,10 +750,14 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       id: mongoId,
       farmer: mongoId,
       product: { $ref: '#/components/schemas/Product' },
+      title: { type: 'string' },
+      description: { type: 'string' },
       quantity: { type: 'number' },
       price: { type: 'number', description: 'Price per unit in local currency' },
       currency: { type: 'string', example: 'UGX', default: 'UGX' },
-      status: { type: 'string', enum: ['active', 'sold', 'expired', 'draft'] },
+      status: { type: 'string', enum: ['active', 'pending', 'sold', 'expired', 'cancelled'] },
+      uiStatus: { type: 'string', enum: ['draft', 'published', 'paused', 'closed'] },
+      quality: { type: 'string', enum: ['premium', 'standard', 'economy'] },
       harvestDate: { type: 'string', format: 'date' },
       expiryDate: { type: 'string', format: 'date' },
       location: {
@@ -767,16 +771,23 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
 
   ListingCreateRequest: {
     type: 'object',
-    required: ['product', 'quantity', 'price'],
+    required: ['product', 'title', 'quantity', 'price', 'quality', 'deliveryOptions', 'location'],
     properties: {
       product: { ...mongoId, description: 'Product ID' },
+      title: { type: 'string', minLength: 5, maxLength: 200 },
+      description: { type: 'string' },
       quantity: { type: 'number', example: 500, description: 'Available quantity' },
       price: { type: 'number', example: 1200, description: 'Price per unit' },
-      currency: { type: 'string', example: 'UGX' },
+      quality: { type: 'string', enum: ['premium', 'standard', 'economy'] },
+      deliveryOptions: { type: 'array', items: { type: 'string' } },
+      status: { type: 'string', enum: ['active', 'pending', 'sold', 'expired', 'cancelled', 'draft', 'published', 'paused', 'closed'] },
+      uiStatus: { type: 'string', enum: ['draft', 'published', 'paused', 'closed'] },
       harvestDate: { type: 'string', format: 'date' },
-      expiryDate: { type: 'string', format: 'date' },
+      availableFrom: { type: 'string', format: 'date-time' },
+      availableUntil: { type: 'string', format: 'date-time' },
       location: {
         type: 'object',
+        required: ['region', 'district'],
         properties: { region: { type: 'string' }, district: { type: 'string' } },
       },
     },
@@ -799,8 +810,9 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       currency: { type: 'string', example: 'UGX' },
       status: {
         type: 'string',
-        enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'],
+        enum: ['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled'],
       },
+      uiStatus: { type: 'string', enum: ['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'] },
       paymentStatus: { type: 'string', enum: ['pending', 'paid', 'failed', 'refunded'] },
       deliveryAddress: {
         type: 'object',
@@ -812,9 +824,9 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
 
   OrderCreateRequest: {
     type: 'object',
-    required: ['listingId', 'quantity', 'deliveryAddress'],
+    required: ['listing', 'quantity', 'deliveryAddress'],
     properties: {
-      listingId: mongoId,
+      listing: mongoId,
       quantity: { type: 'number', example: 100 },
       deliveryAddress: {
         type: 'object',
@@ -935,12 +947,52 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     properties: {
       id: mongoId,
       participants: { type: 'array', items: mongoId },
-      type: { type: 'string', enum: ['direct', 'group', 'support', 'expert_consultation', 'order_chat'] },
+      type: { type: 'string', enum: ['farmer_expert', 'buyer_seller', 'support', 'group', 'system'] },
       title: { type: 'string' },
       lastMessage: { type: 'string' },
       unreadCount: { type: 'integer' },
+      isLocked: { type: 'boolean' },
       isArchived: { type: 'boolean' },
+      negotiationStatus: { type: 'string', enum: ['open', 'agreed', 'stalled', 'closed'] },
+      uiStatus: { type: 'string', enum: ['open', 'agreed', 'stalled', 'closed'] },
       createdAt: isoDate,
+    },
+  },
+
+  MarketplaceContract: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      contractNumber: { type: 'string', example: 'CTR-2603-000001' },
+      organization: mongoId,
+      listing: mongoId,
+      order: mongoId,
+      offer: mongoId,
+      title: { type: 'string' },
+      terms: { type: 'string' },
+      valueAmount: { type: 'number' },
+      currency: { type: 'string', example: 'UGX' },
+      startDate: isoDate,
+      endDate: isoDate,
+      parties: { type: 'array', items: mongoId },
+      signatures: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            user: mongoId,
+            signedAt: isoDate,
+            note: { type: 'string' },
+          },
+        },
+      },
+      status: { type: 'string', enum: ['draft', 'under_review', 'active', 'completed', 'terminated'] },
+      uiStatus: { type: 'string', enum: ['draft', 'under_review', 'active', 'completed', 'terminated'] },
+      isActive: { type: 'boolean' },
+      createdBy: mongoId,
+      lastModifiedBy: mongoId,
+      createdAt: isoDate,
+      updatedAt: isoDate,
     },
   },
 

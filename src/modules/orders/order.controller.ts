@@ -10,13 +10,44 @@ export class OrderController {
     this.orderService = new OrderService();
   }
 
+  private toUiStatus(status: string): 'created' | 'accepted' | 'rejected' | 'fulfilled' | 'cancelled' {
+    switch (status) {
+    case 'pending':
+      return 'created';
+    case 'confirmed':
+    case 'processing':
+    case 'in_transit':
+    case 'delivered':
+      return 'accepted';
+    case 'completed':
+      return 'fulfilled';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'created';
+    }
+  }
+
+  private mapOrderForUi(order: any): any {
+    const plain = typeof order?.toObject === 'function'
+      ? order.toObject()
+      : order;
+
+    const uiStatus = this.toUiStatus(plain.status);
+    return {
+      ...plain,
+      uiStatus,
+      isRejected: plain.status === 'cancelled' && plain.cancelledBy === 'farmer',
+    };
+  }
+
   createOrder = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const order = await this.orderService.createOrder({
         ...req.body,
         buyer: req.user?.id,
       });
-      ResponseHandler.created(res, order, 'Order created successfully');
+      ResponseHandler.created(res, this.mapOrderForUi(order), 'Order created successfully');
     } catch (error) {
       next(error);
     }
@@ -26,7 +57,7 @@ export class OrderController {
     try {
       const { id } = req.params;
       const order = await this.orderService.getOrderById(id, req.user!.id, req.user!.role);
-      ResponseHandler.success(res, order, 'Order retrieved successfully');
+      ResponseHandler.success(res, this.mapOrderForUi(order), 'Order retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -37,7 +68,7 @@ export class OrderController {
       const result = await this.orderService.getMyOrders(req.user!.id, req.query);
       ResponseHandler.paginated(
         res,
-        result.data,
+        result.data.map((order) => this.mapOrderForUi(order)),
         result.pagination,
         'Orders retrieved successfully'
       );
@@ -51,7 +82,7 @@ export class OrderController {
       const result = await this.orderService.getFarmerOrders(req.user!.id, req.query);
       ResponseHandler.paginated(
         res,
-        result.data,
+        result.data.map((order) => this.mapOrderForUi(order)),
         result.pagination,
         'Farmer orders retrieved successfully'
       );
@@ -63,14 +94,16 @@ export class OrderController {
   updateOrderStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const status = req.body.uiStatus || req.body.status;
+      const { reason } = req.body;
       const order = await this.orderService.updateOrderStatus(
         id,
         status,
         req.user!.id,
-        req.user!.role
+        req.user!.role,
+        reason
       );
-      ResponseHandler.success(res, order, 'Order status updated successfully');
+      ResponseHandler.success(res, this.mapOrderForUi(order), 'Order status updated successfully');
     } catch (error) {
       next(error);
     }
@@ -81,7 +114,7 @@ export class OrderController {
       const { id } = req.params;
       const { reason } = req.body;
       const order = await this.orderService.cancelOrder(id, req.user!.id, req.user!.role, reason);
-      ResponseHandler.success(res, order, 'Order cancelled successfully');
+      ResponseHandler.success(res, this.mapOrderForUi(order), 'Order cancelled successfully');
     } catch (error) {
       next(error);
     }

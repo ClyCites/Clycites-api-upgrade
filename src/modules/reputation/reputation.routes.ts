@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { reputationController } from './reputation.controller';
 import { authenticate } from '../../common/middleware/auth';
+import { authorize } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
 import {
   createRatingValidator,
@@ -8,6 +9,9 @@ import {
   markHelpfulValidator,
   getUserRatingsValidator,
   getReputationScoreValidator,
+  ratingIdValidator,
+  updateRatingValidator,
+  moderateRatingValidator,
 } from './reputation.validator';
 
 const router = Router();
@@ -33,6 +37,24 @@ router.post(
   '/ratings',
   validate(createRatingValidator),
   reputationController.createRating.bind(reputationController)
+);
+
+router.get(
+  '/ratings/:ratingId',
+  validate(ratingIdValidator),
+  reputationController.getRatingById.bind(reputationController)
+);
+
+router.patch(
+  '/ratings/:ratingId',
+  validate(updateRatingValidator),
+  reputationController.updateRating.bind(reputationController)
+);
+
+router.delete(
+  '/ratings/:ratingId',
+  validate(ratingIdValidator),
+  reputationController.deleteRating.bind(reputationController)
 );
 
 /**
@@ -77,6 +99,13 @@ router.post(
   '/ratings/:ratingId/helpful',
   validate(markHelpfulValidator),
   reputationController.markHelpful.bind(reputationController)
+);
+
+router.post(
+  '/ratings/:ratingId/moderate',
+  authorize('admin', 'platform_admin', 'super_admin'),
+  validate(moderateRatingValidator),
+  reputationController.moderateRating.bind(reputationController)
 );
 
 export default router;

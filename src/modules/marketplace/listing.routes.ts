@@ -65,6 +65,13 @@ router.put(
 );
 
 router.patch(
+  '/:id',
+  authorize('farmer'),
+  validate(updateListingValidator),
+  listingController.updateListing
+);
+
+router.patch(
   '/:id/status',
   authorize('farmer'),
   validate(updateStatusValidator),

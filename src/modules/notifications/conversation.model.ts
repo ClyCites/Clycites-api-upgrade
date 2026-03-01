@@ -16,6 +16,7 @@ import mongoose, { Schema } from 'mongoose';
 import {
   IConversationDocument,
   ConversationType,
+  NegotiationStatus,
 } from './notification.types';
 
 const participantSchema = new Schema(
@@ -63,6 +64,13 @@ const conversationSchema = new Schema<IConversationDocument>(
     isArchived:  { type: Boolean, default: false },
     archivedAt:  { type: Date },
     archivedBy:  { type: Schema.Types.ObjectId, ref: 'User' },
+
+    negotiationStatus: {
+      type: String,
+      enum: Object.values(NegotiationStatus),
+      default: undefined,
+      index: true,
+    },
 
     deletedAt: { type: Date },
   },

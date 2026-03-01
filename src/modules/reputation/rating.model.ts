@@ -50,6 +50,9 @@ export interface IRating extends Document {
   flagReason?: string;
   moderatedBy?: mongoose.Types.ObjectId;
   moderatedAt?: Date;
+  isActive: boolean;
+  deletedAt?: Date;
+  deletedBy?: mongoose.Types.ObjectId;
   
   createdAt: Date;
   updatedAt: Date;
@@ -150,6 +153,16 @@ const RatingSchema = new Schema<IRating>(
       ref: 'User',
     },
     moderatedAt: Date,
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    deletedAt: Date,
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   {
     timestamps: true,
@@ -161,6 +174,7 @@ RatingSchema.index({ order: 1, ratedBy: 1, raterRole: 1 }, { unique: true });
 
 // Indexes for queries
 RatingSchema.index({ ratedUser: 1, status: 1, createdAt: -1 });
+RatingSchema.index({ ratedUser: 1, isActive: 1, status: 1, createdAt: -1 });
 RatingSchema.index({ status: 1, overallRating: -1 });
 
 export default mongoose.model<IRating>('Rating', RatingSchema);

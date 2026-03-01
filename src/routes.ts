@@ -5,6 +5,7 @@ import farmerRoutes from './modules/farmers/farmer.routes';
 import farmersEnterpriseRoutes from './modules/farmers/farmersEnterprise.routes';
 import productRoutes from './modules/products/product.routes';
 import listingRoutes from './modules/marketplace/listing.routes';
+import marketplaceContractsRoutes from './modules/marketplace/contracts.routes';
 import orderRoutes from './modules/orders/order.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
 import messagingRoutes from './modules/notifications/messaging.routes';
@@ -42,6 +43,7 @@ router.use(`${API_VERSION}/farmers`, farmersEnterpriseRoutes); // Enterprise Far
 router.use(`${API_VERSION}/farmers/legacy`, farmerRoutes); // Legacy routes (backward compatibility)
 router.use(`${API_VERSION}/products`, productRoutes);
 router.use(`${API_VERSION}/listings`, listingRoutes);
+router.use(`${API_VERSION}/marketplace`, marketplaceContractsRoutes); // Marketplace Contracts
 router.use(`${API_VERSION}/orders`, orderRoutes);
 router.use(`${API_VERSION}/notifications`, notificationRoutes);
 router.use(`${API_VERSION}/messaging`, messagingRoutes); // Messaging & Conversations Module

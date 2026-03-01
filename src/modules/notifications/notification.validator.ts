@@ -182,6 +182,10 @@ export const createConversationValidator = [
   body('type')
     .isIn(Object.values(ConversationType))
     .withMessage('Invalid conversation type'),
+  body('negotiationStatus')
+    .optional()
+    .isIn(['open', 'agreed', 'stalled', 'closed'])
+    .withMessage('negotiationStatus must be one of open, agreed, stalled, closed'),
   body('participantIds')
     .isArray({ min: 1 })
     .withMessage('participantIds must be a non-empty array'),
@@ -270,4 +274,13 @@ export const lockConversationValidator = [
     .isString()
     .isLength({ max: 500 })
     .withMessage('Reason must be ≤500 characters'),
+];
+
+export const updateNegotiationStatusValidator = [
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid conversation ID'),
+  body('status')
+    .isIn(['open', 'agreed', 'stalled', 'closed'])
+    .withMessage('status must be one of open, agreed, stalled, closed'),
 ];

@@ -31,6 +31,33 @@ class OrderService {
     return ['admin', 'platform_admin', 'super_admin'].includes(role);
   }
 
+  private toInternalStatus(status?: string): IOrder['status'] | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    const normalized = status.trim().toLowerCase();
+    const uiStatusMap: Record<string, IOrder['status']> = {
+      created: 'pending',
+      accepted: 'confirmed',
+      rejected: 'cancelled',
+      fulfilled: 'completed',
+      cancelled: 'cancelled',
+    };
+
+    const nativeStatusMap: Record<string, IOrder['status']> = {
+      pending: 'pending',
+      confirmed: 'confirmed',
+      processing: 'processing',
+      in_transit: 'in_transit',
+      delivered: 'delivered',
+      completed: 'completed',
+      cancelled: 'cancelled',
+    };
+
+    return uiStatusMap[normalized] || nativeStatusMap[normalized];
+  }
+
   async createOrder(data: CreateOrderData): Promise<IOrder> {
     // Get listing details
     const listing = await Listing.findById(data.listing).populate('product');
@@ -109,8 +136,9 @@ class OrderService {
 
     const filter: any = { buyer: userId };
 
-    if (query.status) {
-      filter.status = query.status;
+    const requestedStatus = this.toInternalStatus(query.uiStatus || query.status);
+    if (requestedStatus) {
+      filter.status = requestedStatus;
     }
 
     if (query.paymentStatus) {
@@ -144,8 +172,9 @@ class OrderService {
 
     const filter: any = { farmer: farmerDoc._id };
 
-    if (query.status) {
-      filter.status = query.status;
+    const requestedStatus = this.toInternalStatus(query.uiStatus || query.status);
+    if (requestedStatus) {
+      filter.status = requestedStatus;
     }
 
     if (query.paymentStatus) {
@@ -168,9 +197,10 @@ class OrderService {
 
   async updateOrderStatus(
     orderId: string,
-    status: IOrder['status'],
+    status: string,
     userId: string,
-    userRole: string
+    userRole: string,
+    reason?: string
   ): Promise<IOrder> {
     const order = await Order.findById(orderId);
 
@@ -186,20 +216,31 @@ class OrderService {
       }
     }
 
+    const targetStatus = this.toInternalStatus(status);
+    if (!targetStatus) {
+      throw new BadRequestError('Invalid order status');
+    }
+
     // Validate status transition
-    this.validateStatusTransition(order.status, status);
+    this.validateStatusTransition(order.status, targetStatus);
 
-    order.status = status;
+    order.status = targetStatus;
 
-    if (status === 'delivered') {
+    if (targetStatus === 'delivered') {
       order.actualDeliveryDate = new Date();
     }
 
+    if (targetStatus === 'cancelled' && reason) {
+      order.cancellationReason = reason;
+    }
+
     order.statusHistory.push({
-      status: status as any,
+      status: targetStatus as any,
       changedBy: new mongoose.Types.ObjectId(userId),
       changedAt: new Date(),
-      note: `Status updated to ${status}`,
+      note: reason
+        ? `Status updated to ${targetStatus}: ${reason}`
+        : `Status updated to ${targetStatus}`,
     });
 
     await order.save();

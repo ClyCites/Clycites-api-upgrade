@@ -33,10 +33,37 @@ export const ordersPaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         pageParam, limitParam,
-        { name: 'status', in: 'query', schema: { type: 'string' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled', 'created', 'accepted', 'rejected', 'fulfilled'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'] } },
         { name: 'role', in: 'query', schema: { type: 'string', enum: ['buyer', 'seller'] }, description: 'Filter by your role in the order.' },
       ],
-      responses: { 200: { description: 'My orders.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      responses: {
+        200: {
+          description: 'My orders.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: { type: 'array', items: { $ref: '#/components/schemas/Order' } },
+                      meta: {
+                        type: 'object',
+                        properties: {
+                          pagination: { $ref: '#/components/schemas/PaginationMeta' },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
     },
   },
 
@@ -59,9 +86,37 @@ export const ordersPaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         pageParam, limitParam,
-        { name: 'status', in: 'query', schema: { type: 'string' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled', 'created', 'accepted', 'rejected', 'fulfilled'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'] } },
       ],
-      responses: { 200: { description: 'Farmer orders.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      responses: {
+        200: {
+          description: 'Farmer orders.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: { type: 'array', items: { $ref: '#/components/schemas/Order' } },
+                      meta: {
+                        type: 'object',
+                        properties: {
+                          pagination: { $ref: '#/components/schemas/PaginationMeta' },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
     },
   },
 
@@ -85,11 +140,22 @@ export const ordersPaths: Record<string, unknown> = {
     patch: {
       tags: ['Orders'],
       summary: 'Update order status',
-      description: 'Transition order through its lifecycle (confirm, ship, deliver, complete, cancel). Requires farmer or admin role.',
+      description: 'Transition order through lifecycle using native status or uiStatus. Valid native transitions: pending->confirmed/cancelled, confirmed->processing/cancelled, processing->in_transit/cancelled, in_transit->delivered/cancelled, delivered->completed.',
       operationId: 'updateOrderStatus',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['confirmed', 'processing', 'shipped', 'delivered', 'completed', 'cancelled'] }, reason: { type: 'string', description: 'Required when cancelling.' } } }),
+      requestBody: r({
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['pending', 'confirmed', 'processing', 'in_transit', 'delivered', 'completed', 'cancelled', 'created', 'accepted', 'rejected', 'fulfilled'] },
+          uiStatus: { type: 'string', enum: ['created', 'accepted', 'rejected', 'fulfilled', 'cancelled'] },
+          reason: { type: 'string', description: 'Optional status note; commonly used when cancelling/rejecting.' },
+        },
+        anyOf: [
+          { required: ['status'] },
+          { required: ['uiStatus'] },
+        ],
+      }),
       responses: { 200: { description: 'Status updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },

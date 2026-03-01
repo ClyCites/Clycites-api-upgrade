@@ -10,13 +10,40 @@ export class ListingController {
     this.listingService = new ListingService();
   }
 
+  private toUiStatus(status: string): 'draft' | 'published' | 'paused' | 'closed' {
+    switch (status) {
+    case 'pending':
+      return 'draft';
+    case 'active':
+      return 'published';
+    case 'cancelled':
+      return 'paused';
+    case 'sold':
+    case 'expired':
+      return 'closed';
+    default:
+      return 'draft';
+    }
+  }
+
+  private mapListingForUi(listing: any): any {
+    const plain = typeof listing?.toObject === 'function'
+      ? listing.toObject()
+      : listing;
+
+    return {
+      ...plain,
+      uiStatus: this.toUiStatus(plain.status),
+    };
+  }
+
   createListing = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const listing = await this.listingService.createListing({
         ...req.body,
         farmer: req.body.farmer || req.user?.farmerId,
       });
-      ResponseHandler.created(res, listing, 'Listing created successfully');
+      ResponseHandler.created(res, this.mapListingForUi(listing), 'Listing created successfully');
     } catch (error) {
       next(error);
     }
@@ -26,7 +53,7 @@ export class ListingController {
     try {
       const { id } = req.params;
       const listing = await this.listingService.getListingById(id);
-      ResponseHandler.success(res, listing, 'Listing retrieved successfully');
+      ResponseHandler.success(res, this.mapListingForUi(listing), 'Listing retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -37,7 +64,7 @@ export class ListingController {
       const result = await this.listingService.getAllListings(req.query);
       ResponseHandler.paginated(
         res,
-        result.data,
+        result.data.map((listing) => this.mapListingForUi(listing)),
         result.pagination,
         'Listings retrieved successfully'
       );
@@ -56,7 +83,7 @@ export class ListingController {
       const result = await this.listingService.getMyListings(farmerId, req.query);
       return ResponseHandler.paginated(
         res,
-        result.data,
+        result.data.map((listing) => this.mapListingForUi(listing)),
         result.pagination,
         'My listings retrieved successfully'
       );
@@ -74,7 +101,7 @@ export class ListingController {
       }
 
       const listing = await this.listingService.updateListing(id, farmerId, req.body);
-      return ResponseHandler.success(res, listing, 'Listing updated successfully');
+      return ResponseHandler.success(res, this.mapListingForUi(listing), 'Listing updated successfully');
     } catch (error) {
       return next(error);
     }
@@ -83,14 +110,14 @@ export class ListingController {
   updateListingStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const status = req.body.uiStatus || req.body.status;
       const farmerId = req.user?.farmerId;
       if (!farmerId) {
         return ResponseHandler.error(res, 'Farmer profile not found', 404);
       }
 
       const listing = await this.listingService.updateListingStatus(id, farmerId, status);
-      return ResponseHandler.success(res, listing, 'Listing status updated successfully');
+      return ResponseHandler.success(res, this.mapListingForUi(listing), 'Listing status updated successfully');
     } catch (error) {
       return next(error);
     }

@@ -7,6 +7,45 @@ import { ICreateConversationInput, ISendMessageInput } from './notification.type
 
 // ── Conversations ─────────────────────────────────────────────────────────────
 
+const toNegotiationUiStatus = (conversation: Record<string, unknown>): 'open' | 'agreed' | 'stalled' | 'closed' | undefined => {
+  const type = conversation.type as string | undefined;
+  if (type !== 'buyer_seller') {
+    return undefined;
+  }
+
+  const explicit = conversation.negotiationStatus as string | undefined;
+  if (explicit === 'open' || explicit === 'agreed' || explicit === 'stalled' || explicit === 'closed') {
+    return explicit;
+  }
+
+  if (conversation.isArchived) {
+    return 'closed';
+  }
+
+  if (conversation.isLocked) {
+    return 'stalled';
+  }
+
+  return 'open';
+};
+
+const mapConversationForUi = (conversation: any): any => {
+  const plain = typeof conversation?.toObject === 'function'
+    ? conversation.toObject()
+    : conversation;
+  const uiStatus = toNegotiationUiStatus(plain);
+
+  if (!uiStatus) {
+    return plain;
+  }
+
+  return {
+    ...plain,
+    negotiationStatus: plain.negotiationStatus || uiStatus,
+    uiStatus,
+  };
+};
+
 export const createConversation = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const input: ICreateConversationInput = req.body;
@@ -18,28 +57,34 @@ export const createConversation = async (req: AuthRequest, res: Response, next: 
       resourceId: (conversation as { id?: string }).id?.toString(),
       status:     'success',
     });
-    sendSuccess(res, conversation, 'Conversation created', 201);
+    sendSuccess(res, mapConversationForUi(conversation), 'Conversation created', 201);
   } catch (error) { next(error); }
 };
 
 export const getMyConversations = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const result = await messagingService.getMyConversations(req.user!.id, req.query as Record<string, unknown>);
-    sendSuccess(res, result, 'Conversations retrieved');
+    sendSuccess(
+      res,
+      result.data.map((conversation: any) => mapConversationForUi(conversation)),
+      'Conversations retrieved',
+      200,
+      { pagination: result.pagination }
+    );
   } catch (error) { next(error); }
 };
 
 export const getConversation = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const conversation = await messagingService.getConversation(req.params.id, req.user!.id);
-    sendSuccess(res, conversation, 'Conversation retrieved');
+    sendSuccess(res, mapConversationForUi(conversation), 'Conversation retrieved');
   } catch (error) { next(error); }
 };
 
 export const archiveConversation = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const conversation = await messagingService.archiveConversation(req.params.id, req.user!.id);
-    sendSuccess(res, conversation, 'Conversation archived');
+    sendSuccess(res, mapConversationForUi(conversation), 'Conversation archived');
   } catch (error) { next(error); }
 };
 
@@ -57,7 +102,7 @@ export const lockConversation = async (req: AuthRequest, res: Response, next: Ne
       resourceId: req.params.id,
       status:     'success',
     });
-    sendSuccess(res, conversation, 'Conversation locked');
+    sendSuccess(res, mapConversationForUi(conversation), 'Conversation locked');
   } catch (error) { next(error); }
 };
 
@@ -71,7 +116,18 @@ export const unlockConversation = async (req: AuthRequest, res: Response, next: 
       resourceId: req.params.id,
       status:     'success',
     });
-    sendSuccess(res, conversation, 'Conversation unlocked');
+    sendSuccess(res, mapConversationForUi(conversation), 'Conversation unlocked');
+  } catch (error) { next(error); }
+};
+
+export const updateNegotiationStatus = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const conversation = await messagingService.updateNegotiationStatus(
+      req.params.id,
+      req.user!.id,
+      req.body.status
+    );
+    sendSuccess(res, mapConversationForUi(conversation), 'Negotiation status updated');
   } catch (error) { next(error); }
 };
 
@@ -109,7 +165,7 @@ export const sendMessage = async (req: AuthRequest, res: Response, next: NextFun
 export const getMessages = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const result = await messagingService.getMessages(req.params.id, req.user!.id, req.query as Record<string, unknown>);
-    sendSuccess(res, result, 'Messages retrieved');
+    sendSuccess(res, result.data, 'Messages retrieved', 200, { pagination: result.pagination });
   } catch (error) { next(error); }
 };
 

@@ -1,7 +1,33 @@
 import { Request, Response, NextFunction } from 'express';
 import { reputationService } from './reputation.service';
+import { ResponseHandler } from '../../common/utils/response';
 
 export class ReputationController {
+  private toUiStatus(status: string): 'draft' | 'published' | 'hidden' {
+    switch (status) {
+    case 'pending':
+      return 'draft';
+    case 'approved':
+      return 'published';
+    case 'rejected':
+    case 'flagged':
+      return 'hidden';
+    default:
+      return 'draft';
+    }
+  }
+
+  private mapRatingForUi(rating: any): any {
+    const plain = typeof rating?.toObject === 'function'
+      ? rating.toObject()
+      : rating;
+
+    return {
+      ...plain,
+      uiStatus: plain.uiStatus || this.toUiStatus(plain.status),
+    };
+  }
+
   /**
    * Create a rating for an order
    * POST /api/reputation/ratings
@@ -11,11 +37,11 @@ export class ReputationController {
       const userId = req.user!.id;
       const rating = await reputationService.createRating(userId, req.body);
 
-      res.status(201).json({
-        success: true,
-        message: 'Rating created successfully',
-        data: { rating },
-      });
+      ResponseHandler.created(
+        res,
+        this.mapRatingForUi(rating),
+        'Rating created successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -30,17 +56,28 @@ export class ReputationController {
       const { userId } = req.params;
       const filters = {
         role: req.query.role as 'buyer' | 'seller' | undefined,
+        status: req.query.status as 'pending' | 'approved' | 'rejected' | 'flagged' | undefined,
+        uiStatus: req.query.uiStatus as 'draft' | 'published' | 'hidden' | undefined,
         page: req.query.page ? parseInt(req.query.page as string) : undefined,
         limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       };
 
       const result = await reputationService.getUserRatings(userId, filters);
 
-      res.json({
-        success: true,
-        message: 'Ratings retrieved successfully',
-        data: result,
-      });
+      ResponseHandler.success(
+        res,
+        result.ratings,
+        'Ratings retrieved successfully',
+        200,
+        {
+          pagination: {
+            page: result.pagination.page,
+            limit: result.pagination.limit,
+            total: result.pagination.total,
+            totalPages: result.pagination.totalPages,
+          },
+        }
+      );
     } catch (error) {
       next(error);
     }
@@ -55,11 +92,7 @@ export class ReputationController {
       const { userId } = req.params;
       const reputation = await reputationService.getReputationScore(userId);
 
-      res.json({
-        success: true,
-        message: 'Reputation score retrieved successfully',
-        data: { reputation },
-      });
+      ResponseHandler.success(res, { reputation }, 'Reputation score retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -77,11 +110,11 @@ export class ReputationController {
 
       const rating = await reputationService.addSellerResponse(userId, ratingId, message);
 
-      res.json({
-        success: true,
-        message: 'Response added successfully',
-        data: { rating },
-      });
+      ResponseHandler.success(
+        res,
+        this.mapRatingForUi(rating),
+        'Response added successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -98,11 +131,7 @@ export class ReputationController {
 
       await reputationService.markHelpful(ratingId, helpful);
 
-      res.json({
-        success: true,
-        message: 'Rating feedback recorded',
-        data: null,
-      });
+      ResponseHandler.success(res, null, 'Rating feedback recorded');
     } catch (error) {
       next(error);
     }
@@ -119,11 +148,84 @@ export class ReputationController {
 
       const users = await reputationService.getTopRatedUsers(userType, limit);
 
-      res.json({
-        success: true,
-        message: 'Top-rated users retrieved successfully',
-        data: { users },
-      });
+      ResponseHandler.success(res, { users }, 'Top-rated users retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get rating by ID
+   * GET /api/reputation/ratings/:ratingId
+   */
+  async getRatingById(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const rating = await reputationService.getRatingById(
+        req.params.ratingId,
+        req.user!.id,
+        req.user!.role
+      );
+
+      ResponseHandler.success(res, rating, 'Rating retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update rating
+   * PATCH /api/reputation/ratings/:ratingId
+   */
+  async updateRating(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const rating = await reputationService.updateRating(
+        req.params.ratingId,
+        req.user!.id,
+        req.user!.role,
+        req.body
+      );
+
+      ResponseHandler.success(res, rating, 'Rating updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete rating (soft)
+   * DELETE /api/reputation/ratings/:ratingId
+   */
+  async deleteRating(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      await reputationService.deleteRating(
+        req.params.ratingId,
+        req.user!.id,
+        req.user!.role
+      );
+
+      ResponseHandler.success(res, null, 'Rating deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Moderate rating
+   * POST /api/reputation/ratings/:ratingId/moderate
+   */
+  async moderateRating(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const rating = await reputationService.moderateRating(
+        req.params.ratingId,
+        req.user!.id,
+        req.user!.role,
+        {
+          status: req.body.status,
+          reason: req.body.reason,
+        }
+      );
+
+      ResponseHandler.success(res, rating, 'Rating moderated successfully');
     } catch (error) {
       next(error);
     }

@@ -25,9 +25,61 @@ interface CreateRatingDTO {
   wouldRecommend: boolean;
   wouldBuyAgain?: boolean;
   images?: string[];
+  status?: 'pending' | 'approved' | 'rejected' | 'flagged';
+  uiStatus?: 'draft' | 'published' | 'hidden';
 }
 
 export class ReputationService {
+  private isAdminLike(role: string): boolean {
+    return ['admin', 'platform_admin', 'super_admin'].includes(role);
+  }
+
+  private toUiStatus(status: IRating['status']): 'draft' | 'published' | 'hidden' {
+    switch (status) {
+    case 'pending':
+      return 'draft';
+    case 'approved':
+      return 'published';
+    case 'rejected':
+    case 'flagged':
+      return 'hidden';
+    default:
+      return 'draft';
+    }
+  }
+
+  private toInternalStatus(status?: string): IRating['status'] | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    const normalized = status.trim().toLowerCase();
+    const uiMap: Record<string, IRating['status']> = {
+      draft: 'pending',
+      published: 'approved',
+      hidden: 'flagged',
+    };
+
+    const nativeMap: Record<string, IRating['status']> = {
+      pending: 'pending',
+      approved: 'approved',
+      rejected: 'rejected',
+      flagged: 'flagged',
+    };
+
+    return uiMap[normalized] || nativeMap[normalized];
+  }
+
+  private mapRatingForUi<T extends Record<string, any>>(rating: T): T & { uiStatus: 'draft' | 'published' | 'hidden' } {
+    const plain = typeof rating?.toObject === 'function'
+      ? rating.toObject()
+      : rating;
+
+    return {
+      ...plain,
+      uiStatus: this.toUiStatus(plain.status),
+    };
+  }
 
   async createRating(userId: string, data: CreateRatingDTO): Promise<IRating> {
     const session = await mongoose.startSession();
@@ -67,6 +119,7 @@ export class ReputationService {
         throw new AppError('You have already rated this order', 400);
       }
 
+      const requestedStatus = this.toInternalStatus(data.uiStatus || data.status);
       const rating = new Rating({
         order: data.order,
         ratedUser: ratedUserId,
@@ -81,7 +134,7 @@ export class ReputationService {
         wouldBuyAgain: data.wouldBuyAgain,
         images: data.images || [],
         verified: true,
-        status: 'approved',
+        status: requestedStatus || 'approved',
       });
 
       await rating.save({ session });
@@ -129,6 +182,7 @@ export class ReputationService {
     const ratings = await Rating.find({
       ratedUser: userId,
       status: 'approved',
+      isActive: true,
     }).session(session || null);
 
     const ratingCount = ratings.length;
@@ -425,17 +479,23 @@ export class ReputationService {
     userId: string,
     filters: {
       role?: 'buyer' | 'seller';
+      status?: 'pending' | 'approved' | 'rejected' | 'flagged';
+      uiStatus?: 'draft' | 'published' | 'hidden';
       page?: number;
       limit?: number;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<any> {
-    const { role, page = 1, limit = 20 } = filters;
+    const { role, status, uiStatus, page = 1, limit = 20 } = filters;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const query: any = { ratedUser: userId, status: 'approved' };
+    const query: any = { ratedUser: userId, isActive: true };
     if (role) {
       query.raterRole = role;
+    }
+    const requestedStatus = this.toInternalStatus(uiStatus || status);
+    if (requestedStatus) {
+      query.status = requestedStatus;
     }
 
     const skip = (page - 1) * limit;
@@ -450,16 +510,139 @@ export class ReputationService {
         .lean(),
       Rating.countDocuments(query),
     ]);
+    const normalizedRatings = ratings.map((rating) => this.mapRatingForUi(rating));
 
     return {
-      ratings,
+      ratings: normalizedRatings,
       pagination: {
         total,
         page,
         limit,
         pages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async getRatingById(
+    ratingId: string,
+    requesterId: string,
+    requesterRole: string
+  ): Promise<any> {
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true })
+      .populate('ratedUser', 'name email')
+      .populate('ratedBy', 'name email')
+      .populate('order', 'orderNumber')
+      .populate('offer', 'offerNumber');
+
+    if (!rating) {
+      throw new AppError('Rating not found', 404);
+    }
+
+    const isOwner = rating.ratedBy.toString() === requesterId || rating.ratedUser.toString() === requesterId;
+    if (!isOwner && !this.isAdminLike(requesterRole)) {
+      throw new AppError('You are not authorized to view this rating', 403);
+    }
+
+    return this.mapRatingForUi(rating);
+  }
+
+  async updateRating(
+    ratingId: string,
+    requesterId: string,
+    requesterRole: string,
+    updates: Partial<CreateRatingDTO>
+  ): Promise<any> {
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true });
+    if (!rating) {
+      throw new AppError('Rating not found', 404);
+    }
+
+    const isOwner = rating.ratedBy.toString() === requesterId;
+    if (!isOwner && !this.isAdminLike(requesterRole)) {
+      throw new AppError('Only the rating author or admin can update this rating', 403);
+    }
+
+    if (updates.overallRating !== undefined) rating.overallRating = updates.overallRating;
+    if (updates.categoryRatings !== undefined) rating.categoryRatings = updates.categoryRatings;
+    if (updates.review !== undefined) rating.review = updates.review;
+    if (updates.pros !== undefined) rating.pros = updates.pros;
+    if (updates.cons !== undefined) rating.cons = updates.cons;
+    if (updates.wouldRecommend !== undefined) rating.wouldRecommend = updates.wouldRecommend;
+    if (updates.wouldBuyAgain !== undefined) rating.wouldBuyAgain = updates.wouldBuyAgain;
+    if (updates.images !== undefined) rating.images = updates.images;
+
+    if (updates.uiStatus || updates.status) {
+      const nextStatus = this.toInternalStatus(updates.uiStatus || updates.status);
+      if (!nextStatus) {
+        throw new AppError('Invalid rating status', 400);
+      }
+
+      rating.status = nextStatus;
+    }
+
+    await rating.save();
+    await this.updateReputationScore(rating.ratedUser.toString());
+
+    return this.mapRatingForUi(await rating.populate(['ratedUser', 'ratedBy', 'order']));
+  }
+
+  async deleteRating(
+    ratingId: string,
+    requesterId: string,
+    requesterRole: string
+  ): Promise<void> {
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true });
+    if (!rating) {
+      throw new AppError('Rating not found', 404);
+    }
+
+    const isOwner = rating.ratedBy.toString() === requesterId;
+    if (!isOwner && !this.isAdminLike(requesterRole)) {
+      throw new AppError('Only the rating author or admin can delete this rating', 403);
+    }
+
+    rating.isActive = false;
+    rating.deletedAt = new Date();
+    rating.deletedBy = new mongoose.Types.ObjectId(requesterId);
+    rating.status = 'rejected';
+    await rating.save();
+
+    await this.updateReputationScore(rating.ratedUser.toString());
+  }
+
+  async moderateRating(
+    ratingId: string,
+    moderatorId: string,
+    moderatorRole: string,
+    payload: {
+      status: 'draft' | 'published' | 'hidden';
+      reason?: string;
+    }
+  ): Promise<any> {
+    if (!this.isAdminLike(moderatorRole)) {
+      throw new AppError('Only admins can moderate ratings', 403);
+    }
+
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true });
+    if (!rating) {
+      throw new AppError('Rating not found', 404);
+    }
+
+    const status = this.toInternalStatus(payload.status);
+    if (!status) {
+      throw new AppError('Invalid moderation status', 400);
+    }
+
+    rating.status = status;
+    rating.flagReason = payload.reason;
+    rating.moderatedBy = new mongoose.Types.ObjectId(moderatorId);
+    rating.moderatedAt = new Date();
+    await rating.save();
+
+    await this.updateReputationScore(rating.ratedUser.toString());
+
+    return this.mapRatingForUi(await rating.populate(['ratedUser', 'ratedBy', 'order']));
   }
 
   /**
@@ -484,7 +667,7 @@ export class ReputationService {
     ratingId: string,
     message: string
   ): Promise<IRating> {
-    const rating = await Rating.findById(ratingId);
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true });
     if (!rating) {
       throw new AppError('Rating not found', 404);
     }
@@ -515,7 +698,7 @@ export class ReputationService {
    */
   async markHelpful(ratingId: string, helpful: boolean): Promise<void> {
     // userId parameter removed as it's not used
-    const rating = await Rating.findById(ratingId);
+    const rating = await Rating.findOne({ _id: ratingId, isActive: true });
     if (!rating) {
       throw new AppError('Rating not found', 404);
     }
