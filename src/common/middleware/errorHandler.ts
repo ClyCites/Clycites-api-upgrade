@@ -4,6 +4,15 @@ import { ResponseHandler } from '../utils/response';
 import logger from '../utils/logger';
 import config from '../config';
 
+type MongoDuplicateKeyError = Error & {
+  code?: number;
+  keyPattern?: Record<string, unknown>;
+};
+
+const isMongoDuplicateKeyError = (error: Error): error is MongoDuplicateKeyError => {
+  return error.name === 'MongoServerError' && (error as MongoDuplicateKeyError).code === 11000;
+};
+
 export const errorHandler = (
   err: Error | AppError,
   _req: Request,
@@ -35,8 +44,9 @@ export const errorHandler = (
   }
 
   // Handle duplicate key errors
-  if (err.name === 'MongoServerError' && (err as any).code === 11000) {
-    const field = Object.keys((err as any).keyPattern)[0];
+  if (isMongoDuplicateKeyError(err)) {
+    const keyPattern = err.keyPattern || {};
+    const field = Object.keys(keyPattern)[0] || 'resource';
     return ResponseHandler.conflict(res, `${field} already exists`);
   }
 
