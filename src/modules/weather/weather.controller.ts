@@ -11,7 +11,7 @@
 import { Response, NextFunction, Request } from 'express';
 import mongoose from 'mongoose';
 import { AuthRequest } from '../../common/middleware/auth';
-import { sendSuccess } from '../../common/utils/response';
+import { sendSuccess, ResponseHandler } from '../../common/utils/response';
 import auditService from '../audit/audit.service';
 import { AppError } from '../../common/errors/AppError';
 
@@ -36,8 +36,58 @@ import {
   IUpdateRuleInput,
   WeatherUnit,
   DeliveryChannel,
+  SensorReadingStatus,
+  IFarmWeatherProfileDocument,
 } from './weather.types';
 import { PaginationUtil } from '../../common/utils/pagination';
+
+const privilegedRoles = new Set(['super_admin', 'platform_admin', 'admin', 'org:manager']);
+
+const hasPrivilegedRole = (role?: string): boolean => !!role && privilegedRoles.has(role);
+
+const assertCanAccessProfile = (req: AuthRequest, profile: IFarmWeatherProfileDocument): void => {
+  if (hasPrivilegedRole(req.user?.role)) {
+    return;
+  }
+
+  const userId = req.user?.id;
+  if (!userId) {
+    throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+  }
+
+  const profileOwnerId = profile.farmerId?.toString();
+  const profileOrgId = profile.organizationId?.toString();
+  const userOrgId = req.user?.orgId;
+
+  if (profileOwnerId === userId) {
+    return;
+  }
+
+  if (profileOrgId && userOrgId && profileOrgId === userOrgId) {
+    return;
+  }
+
+  throw new AppError('Access denied to weather profile', 403, 'FORBIDDEN');
+};
+
+const validateSensorStatusTransition = (
+  current: SensorReadingStatus,
+  next: SensorReadingStatus
+): void => {
+  const transitions: Record<SensorReadingStatus, SensorReadingStatus[]> = {
+    [SensorReadingStatus.CAPTURED]: [SensorReadingStatus.CAPTURED, SensorReadingStatus.FLAGGED, SensorReadingStatus.VERIFIED],
+    [SensorReadingStatus.FLAGGED]: [SensorReadingStatus.FLAGGED, SensorReadingStatus.CAPTURED, SensorReadingStatus.VERIFIED],
+    [SensorReadingStatus.VERIFIED]: [SensorReadingStatus.VERIFIED],
+  };
+
+  if (!transitions[current].includes(next)) {
+    throw new AppError(
+      `Invalid sensor status transition: ${current} -> ${next}`,
+      400,
+      'BAD_REQUEST'
+    );
+  }
+};
 
 // ============================================================================
 // Profiles
@@ -178,6 +228,7 @@ export async function getCurrentConditions(req: AuthRequest, res: Response, next
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const latest = await WeatherSnapshot.findOne({ farmId: profile.farmId }).sort({ timestamp: -1 }).lean();
     sendSuccess(res, latest ?? null, 'Current conditions');
@@ -190,6 +241,7 @@ export async function getSnapshotHistory(req: AuthRequest, res: Response, next: 
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const { page, limit, sortBy, sortOrder } = PaginationUtil.getPaginationParams(req.query);
     const skip = PaginationUtil.getSkip(page, limit);
@@ -198,7 +250,111 @@ export async function getSnapshotHistory(req: AuthRequest, res: Response, next: 
       WeatherSnapshot.find({ farmId: profile.farmId }).sort(sort).skip(skip).limit(limit).lean(),
       WeatherSnapshot.countDocuments({ farmId: profile.farmId }),
     ]);
-    sendSuccess(res, PaginationUtil.buildPaginationResult(data, total, page, limit), 'Snapshot history');
+    ResponseHandler.paginated(
+      res,
+      data,
+      {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+      'Snapshot history'
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createCondition(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const profile = await FarmWeatherProfile.findById(req.params.profileId);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    const payload = req.body as {
+      timestamp?: string;
+      reading: Record<string, unknown>;
+      status?: SensorReadingStatus;
+      statusReason?: string;
+      qualityFlags?: string[];
+    };
+
+    const snapshot = await WeatherSnapshot.create({
+      farmId: profile.farmId,
+      profileId: profile._id,
+      timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date(),
+      reading: payload.reading,
+      status: payload.status ?? SensorReadingStatus.CAPTURED,
+      statusReason: payload.statusReason,
+      qualityFlags: payload.qualityFlags ?? [],
+      dataSource: 'manual',
+      confidenceScore: 1,
+    });
+
+    sendSuccess(res, snapshot, 'Condition captured successfully', 201);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getConditionById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const snapshot = await WeatherSnapshot.findById(req.params.readingId);
+    if (!snapshot) throw new AppError('Sensor reading not found', 404);
+
+    const profile = await FarmWeatherProfile.findById(snapshot.profileId);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    sendSuccess(res, snapshot, 'Sensor reading retrieved');
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateConditionById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const snapshot = await WeatherSnapshot.findById(req.params.readingId);
+    if (!snapshot) throw new AppError('Sensor reading not found', 404);
+
+    const profile = await FarmWeatherProfile.findById(snapshot.profileId);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    const requestedStatus = req.body.status as SensorReadingStatus | undefined;
+    if (requestedStatus) {
+      validateSensorStatusTransition(snapshot.status, requestedStatus);
+      snapshot.status = requestedStatus;
+    }
+
+    if (req.body.statusReason !== undefined) {
+      snapshot.statusReason = req.body.statusReason;
+    }
+
+    if (Array.isArray(req.body.qualityFlags)) {
+      snapshot.qualityFlags = req.body.qualityFlags;
+    }
+
+    if (snapshot.status === SensorReadingStatus.FLAGGED) {
+      snapshot.flaggedAt = new Date();
+      snapshot.flaggedBy = new mongoose.Types.ObjectId(req.user!.id);
+      snapshot.verifiedAt = undefined;
+      snapshot.verifiedBy = undefined;
+    } else if (snapshot.status === SensorReadingStatus.VERIFIED) {
+      snapshot.verifiedAt = new Date();
+      snapshot.verifiedBy = new mongoose.Types.ObjectId(req.user!.id);
+      if (!snapshot.flaggedAt) snapshot.flaggedAt = undefined;
+      if (!snapshot.flaggedBy) snapshot.flaggedBy = undefined;
+    } else if (snapshot.status === SensorReadingStatus.CAPTURED) {
+      snapshot.flaggedAt = undefined;
+      snapshot.flaggedBy = undefined;
+      snapshot.verifiedAt = undefined;
+      snapshot.verifiedBy = undefined;
+    }
+
+    await snapshot.save();
+    sendSuccess(res, snapshot, 'Sensor reading updated');
   } catch (error) {
     next(error);
   }

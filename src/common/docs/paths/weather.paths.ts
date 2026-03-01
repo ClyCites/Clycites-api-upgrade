@@ -70,6 +70,38 @@ export const weatherPaths: Record<string, unknown> = {
       parameters: [profileIdParam],
       responses: { 200: { description: 'Latest weather snapshot.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
+    post: {
+      tags: ['Weather'],
+      summary: 'Capture a manual sensor reading for a farm profile',
+      operationId: 'createCondition',
+      security: auth,
+      parameters: [profileIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['reading'],
+        properties: {
+          timestamp: { type: 'string', format: 'date-time' },
+          status: { type: 'string', enum: ['captured', 'flagged', 'verified'] },
+          statusReason: { type: 'string' },
+          qualityFlags: { type: 'array', items: { type: 'string' } },
+          reading: {
+            type: 'object',
+            required: ['temperatureCelsius', 'humidity'],
+            properties: {
+              temperatureCelsius: { type: 'number' },
+              humidity: { type: 'number', minimum: 0, maximum: 100 },
+              rainfallMm: { type: 'number', minimum: 0 },
+              rainfallMmPerHour: { type: 'number', minimum: 0 },
+              windSpeedKph: { type: 'number', minimum: 0 },
+              windDirectionDeg: { type: 'number', minimum: 0, maximum: 360 },
+              uvIndex: { type: 'number', minimum: 0 },
+              pressureHPa: { type: 'number' },
+            },
+          },
+        },
+      }),
+      responses: { 201: { description: 'Sensor reading created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
   },
 
   '/api/v1/weather/profiles/{profileId}/conditions/history': {
@@ -80,6 +112,33 @@ export const weatherPaths: Record<string, unknown> = {
       security: auth,
       parameters: [profileIdParam, pageParam, limitParam, { name: 'from', in: 'query', schema: { type: 'string', format: 'date' } }, { name: 'to', in: 'query', schema: { type: 'string', format: 'date' } }],
       responses: { 200: { description: 'Paginated snapshot history.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/weather/conditions/{readingId}': {
+    get: {
+      tags: ['Weather'],
+      summary: 'Get a single sensor reading by ID',
+      operationId: 'getConditionById',
+      security: auth,
+      parameters: [{ name: 'readingId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      responses: { 200: { description: 'Sensor reading.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Weather'],
+      summary: 'Update sensor reading workflow status (flag/verify)',
+      operationId: 'updateConditionById',
+      security: auth,
+      parameters: [{ name: 'readingId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['captured', 'flagged', 'verified'] },
+          statusReason: { type: 'string' },
+          qualityFlags: { type: 'array', items: { type: 'string' } },
+        },
+      }),
+      responses: { 200: { description: 'Sensor reading updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 

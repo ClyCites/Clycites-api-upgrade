@@ -9,6 +9,17 @@ const mockService = {
   getCropProduction: jest.fn(),
   updateCropProduction: jest.fn(),
   deleteCropProduction: jest.fn(),
+  getFarmerGrowthStages: jest.fn(),
+  createGrowthStage: jest.fn(),
+  getGrowthStage: jest.fn(),
+  updateGrowthStage: jest.fn(),
+  deleteGrowthStage: jest.fn(),
+  getFarmerYieldPredictions: jest.fn(),
+  createYieldPrediction: jest.fn(),
+  getYieldPrediction: jest.fn(),
+  updateYieldPrediction: jest.fn(),
+  deleteYieldPrediction: jest.fn(),
+  refreshYieldPrediction: jest.fn(),
   createInput: jest.fn(),
   getInput: jest.fn(),
   updateInput: jest.fn(),
@@ -111,9 +122,15 @@ describe('Farmers workspace entity controllers', () => {
 
   test('crops list/update/delete endpoints work with consistent envelopes', async () => {
     const next = jest.fn();
-    const crop = { _id: '507f1f77bcf86cd799439041', cropName: 'Maize' };
+    const crop = { _id: '507f1f77bcf86cd799439041', cropName: 'Maize', uiStatus: 'active' };
     const updatedCrop = { ...crop, productionStatus: 'harvested' };
-    mockService.getFarmerCrops.mockResolvedValue([crop]);
+    mockService.getFarmerCrops.mockResolvedValue({
+      crops: [crop],
+      page: 1,
+      limit: 20,
+      total: 1,
+      totalPages: 1,
+    });
     mockService.getCropProduction.mockResolvedValue(crop);
     mockService.updateCropProduction.mockResolvedValue(updatedCrop);
     mockService.deleteCropProduction.mockResolvedValue(undefined);
@@ -126,6 +143,12 @@ describe('Farmers workspace entity controllers', () => {
     const listRes = createResponseMock(listReq);
     await controller.getFarmerCrops(listReq, listRes, next);
     expect(listRes.payload.success).toBe(true);
+    expect(listRes.payload.meta.pagination).toEqual({
+      page: 1,
+      limit: 20,
+      total: 1,
+      totalPages: 1,
+    });
     expect(listRes.payload.data).toEqual([crop]);
 
     const updateReq = {
@@ -140,6 +163,133 @@ describe('Farmers workspace entity controllers', () => {
     const deleteReq = { params: { cropId: '507f1f77bcf86cd799439041' }, user: adminUser };
     const deleteRes = createResponseMock(deleteReq);
     await controller.deleteCropProduction(deleteReq, deleteRes, next);
+    expect(deleteRes.payload.data).toBeNull();
+  });
+
+  test('growth stages CRUD endpoints return deterministic payloads', async () => {
+    const next = jest.fn();
+    const stage = { _id: '507f1f77bcf86cd799439061', stage: 'vegetative', status: 'active' };
+    const updatedStage = { ...stage, status: 'completed' };
+
+    mockService.getFarmerGrowthStages.mockResolvedValue({
+      stages: [stage],
+      page: 1,
+      limit: 10,
+      total: 1,
+      totalPages: 1,
+    });
+    mockService.createGrowthStage.mockResolvedValue(stage);
+    mockService.getGrowthStage.mockResolvedValue(stage);
+    mockService.updateGrowthStage.mockResolvedValue(updatedStage);
+    mockService.deleteGrowthStage.mockResolvedValue(undefined);
+
+    const listReq = {
+      params: { farmerId: '507f1f77bcf86cd799439012' },
+      query: { page: '1', limit: '10' },
+      user: adminUser,
+    };
+    const listRes = createResponseMock(listReq);
+    await controller.getFarmerGrowthStages(listReq, listRes, next);
+    expect(listRes.payload.success).toBe(true);
+    expect(listRes.payload.meta.pagination).toEqual({
+      page: 1,
+      limit: 10,
+      total: 1,
+      totalPages: 1,
+    });
+    expect(listRes.payload.data).toEqual([stage]);
+
+    const createReq = {
+      params: { farmerId: '507f1f77bcf86cd799439012' },
+      body: { cycleId: '507f1f77bcf86cd799439041', stage: 'vegetative' },
+      user: adminUser,
+    };
+    const createRes = createResponseMock(createReq);
+    await controller.createGrowthStage(createReq, createRes, next);
+    expect(createRes.statusCode).toBe(201);
+    expect(createRes.payload.data).toEqual(stage);
+
+    const getReq = { params: { stageId: '507f1f77bcf86cd799439061' }, user: adminUser };
+    const getRes = createResponseMock(getReq);
+    await controller.getGrowthStage(getReq, getRes, next);
+    expect(getRes.payload.data).toEqual(stage);
+
+    const updateReq = {
+      params: { stageId: '507f1f77bcf86cd799439061' },
+      body: { status: 'completed' },
+      user: adminUser,
+    };
+    const updateRes = createResponseMock(updateReq);
+    await controller.updateGrowthStage(updateReq, updateRes, next);
+    expect(updateRes.payload.data).toEqual(updatedStage);
+
+    const deleteReq = { params: { stageId: '507f1f77bcf86cd799439061' }, user: adminUser };
+    const deleteRes = createResponseMock(deleteReq);
+    await controller.deleteGrowthStage(deleteReq, deleteRes, next);
+    expect(deleteRes.payload.data).toBeNull();
+  });
+
+  test('yield prediction CRUD + refresh endpoints return deterministic payloads', async () => {
+    const next = jest.fn();
+    const prediction = {
+      _id: '507f1f77bcf86cd799439071',
+      cropId: '507f1f77bcf86cd799439041',
+      predictedYield: 4300,
+      confidence: 0.81,
+      status: 'generated',
+    };
+    const refreshed = { ...prediction, status: 'refreshed', refreshedAt: '2026-03-01T00:00:00.000Z' };
+
+    mockService.getFarmerYieldPredictions.mockResolvedValue({
+      predictions: [prediction],
+      page: 1,
+      limit: 20,
+      total: 1,
+      totalPages: 1,
+    });
+    mockService.createYieldPrediction.mockResolvedValue(prediction);
+    mockService.getYieldPrediction.mockResolvedValue(prediction);
+    mockService.updateYieldPrediction.mockResolvedValue({ ...prediction, predictedYield: 4400 });
+    mockService.deleteYieldPrediction.mockResolvedValue(undefined);
+    mockService.refreshYieldPrediction.mockResolvedValue(refreshed);
+
+    const listReq = {
+      params: { farmerId: '507f1f77bcf86cd799439012' },
+      query: {},
+      user: adminUser,
+    };
+    const listRes = createResponseMock(listReq);
+    await controller.getFarmerYieldPredictions(listReq, listRes, next);
+    expect(listRes.payload.success).toBe(true);
+    expect(listRes.payload.meta.pagination.total).toBe(1);
+    expect(listRes.payload.data).toEqual([prediction]);
+
+    const createReq = {
+      params: { farmerId: '507f1f77bcf86cd799439012' },
+      body: {
+        cropId: '507f1f77bcf86cd799439041',
+        predictedYield: 4300,
+        confidence: 0.81,
+        horizonDays: 30,
+      },
+      user: adminUser,
+    };
+    const createRes = createResponseMock(createReq);
+    await controller.createYieldPrediction(createReq, createRes, next);
+    expect(createRes.statusCode).toBe(201);
+
+    const refreshReq = {
+      params: { predictionId: '507f1f77bcf86cd799439071' },
+      body: { predictedYield: 4450 },
+      user: adminUser,
+    };
+    const refreshRes = createResponseMock(refreshReq);
+    await controller.refreshYieldPrediction(refreshReq, refreshRes, next);
+    expect(refreshRes.payload.data.status).toBe('refreshed');
+
+    const deleteReq = { params: { predictionId: '507f1f77bcf86cd799439071' }, user: adminUser };
+    const deleteRes = createResponseMock(deleteReq);
+    await controller.deleteYieldPrediction(deleteReq, deleteRes, next);
     expect(deleteRes.payload.data).toBeNull();
   });
 

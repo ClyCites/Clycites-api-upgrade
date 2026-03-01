@@ -19,6 +19,7 @@ import {
   IAnalyticsResult,
   DetectionType,
   ReportStatus,
+  WorkspaceIncidentStatus,
   SeverityLevel,
   ConfidenceLevel,
   OutbreakSeverity,
@@ -36,6 +37,28 @@ import AuditService from '../audit/audit.service';
 // ============================================================================
 
 class PestDiseaseService {
+  private mapUiStatus(report: InstanceType<typeof PestDiseaseReport>): WorkspaceIncidentStatus {
+    if (report.closedAt || report.reportStatus === ReportStatus.ARCHIVED) {
+      return WorkspaceIncidentStatus.CLOSED;
+    }
+
+    if (report.outcome?.isResolved || report.reportStatus === ReportStatus.CONFIRMED) {
+      return WorkspaceIncidentStatus.RESOLVED;
+    }
+
+    if (report.assignedTo || report.assignedAt) {
+      return WorkspaceIncidentStatus.ASSIGNED;
+    }
+
+    return WorkspaceIncidentStatus.CREATED;
+  }
+
+  private withUiStatus<T extends InstanceType<typeof PestDiseaseReport>>(report: T): T & { uiStatus: WorkspaceIncidentStatus } {
+    return Object.assign(report, {
+      uiStatus: this.mapUiStatus(report),
+    });
+  }
+
   /**
    * Submit detection request with images
    */
@@ -172,6 +195,9 @@ class PestDiseaseService {
       await report.save();
 
       // Run AI detection on primary image
+      if (!report.primaryImage) {
+        throw new AppError('Primary image not available for AI detection', 400, 'PRIMARY_IMAGE_REQUIRED');
+      }
       const detectionResult = await aiDetectionService.detectFromImage(
         report.primaryImage,
         {
@@ -388,7 +414,7 @@ class PestDiseaseService {
     reportId: Types.ObjectId | string,
     tenantId: Types.ObjectId
   ): Promise<InstanceType<typeof PestDiseaseReport> | null> {
-    return await PestDiseaseReport.findOne({
+    const report = await PestDiseaseReport.findOne({
       _id: reportId,
       tenantId,
       isActive: true
@@ -396,6 +422,12 @@ class PestDiseaseService {
       .populate('farmerId', 'personalInfo.fullName contactInfo.primaryPhone')
       .populate('farmId', 'basicInfo.farmName location.centerPoint')
       .populate('expertReview.reviewerId', 'name email');
+
+    if (!report) {
+      return null;
+    }
+
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
   }
 
   /**
@@ -405,7 +437,7 @@ class PestDiseaseService {
     farmerId: Types.ObjectId | string,
     tenantId: Types.ObjectId,
     options: {
-      status?: ReportStatus;
+      status?: string;
       limit?: number;
       skip?: number;
     } = {}
@@ -417,7 +449,35 @@ class PestDiseaseService {
     };
 
     if (options.status) {
-      query.reportStatus = options.status;
+      const requestedStatus = options.status;
+      if (Object.values(ReportStatus).includes(requestedStatus as ReportStatus)) {
+        query.reportStatus = requestedStatus;
+      } else if (Object.values(WorkspaceIncidentStatus).includes(requestedStatus as WorkspaceIncidentStatus)) {
+        switch (requestedStatus as WorkspaceIncidentStatus) {
+        case WorkspaceIncidentStatus.CREATED:
+          query.assignedTo = { $exists: false };
+          query.closedAt = { $exists: false };
+          query['outcome.isResolved'] = { $ne: true };
+          break;
+        case WorkspaceIncidentStatus.ASSIGNED:
+          query.assignedTo = { $exists: true };
+          query.closedAt = { $exists: false };
+          query['outcome.isResolved'] = { $ne: true };
+          break;
+        case WorkspaceIncidentStatus.RESOLVED:
+          query['outcome.isResolved'] = true;
+          query.closedAt = { $exists: false };
+          break;
+        case WorkspaceIncidentStatus.CLOSED:
+          query.$or = [
+            { closedAt: { $exists: true } },
+            { reportStatus: ReportStatus.ARCHIVED },
+          ];
+          break;
+        default:
+          break;
+        }
+      }
     }
 
     const total = await PestDiseaseReport.countDocuments(query);
@@ -427,7 +487,312 @@ class PestDiseaseService {
       .skip(options.skip || 0)
       .populate('farmId', 'basicInfo.farmName');
 
-    return { reports: reports as unknown as InstanceType<typeof PestDiseaseReport>[], total };
+    const typedReports = reports as unknown as InstanceType<typeof PestDiseaseReport>[];
+    return {
+      reports: typedReports.map((report) => this.withUiStatus(report)),
+      total,
+    };
+  }
+
+  /**
+   * Create pest/disease report via JSON payload (no multipart images required)
+   */
+  async createReportJson(
+    tenantId: Types.ObjectId,
+    userId: Types.ObjectId,
+    farmerId: Types.ObjectId | string,
+    farmId: Types.ObjectId | string,
+    payload: {
+      fieldContext?: Partial<IFieldContext> & { latitude?: number; longitude?: number };
+      cropType?: string;
+      growthStage?: IFieldContext['growthStage'];
+      latitude?: number;
+      longitude?: number;
+      farmerNotes?: string;
+      actionTaken?: string;
+      assignmentNotes?: string;
+    }
+  ): Promise<InstanceType<typeof PestDiseaseReport>> {
+    const cropType = payload.fieldContext?.cropType || payload.cropType;
+    if (!cropType) {
+      throw new AppError('fieldContext.cropType is required', 400, 'VALIDATION_ERROR');
+    }
+
+    const longitude = payload.fieldContext?.farmLocation?.coordinates?.[0]
+      ?? payload.fieldContext?.longitude
+      ?? payload.longitude;
+    const latitude = payload.fieldContext?.farmLocation?.coordinates?.[1]
+      ?? payload.fieldContext?.latitude
+      ?? payload.latitude;
+
+    if (longitude === undefined || latitude === undefined) {
+      throw new AppError('fieldContext longitude and latitude are required', 400, 'VALIDATION_ERROR');
+    }
+
+    const fieldContext: IFieldContext = {
+      cropType,
+      cropVariety: payload.fieldContext?.cropVariety,
+      growthStage: (payload.fieldContext?.growthStage || payload.growthStage || 'vegetative') as IFieldContext['growthStage'],
+      plantingDate: payload.fieldContext?.plantingDate,
+      farmLocation: {
+        type: 'Point',
+        coordinates: [Number(longitude), Number(latitude)],
+      },
+      farmSize: payload.fieldContext?.farmSize,
+      soilType: payload.fieldContext?.soilType,
+      irrigationType: payload.fieldContext?.irrigationType,
+    };
+
+    const report = await PestDiseaseReport.create({
+      tenantId,
+      farmerId,
+      farmId,
+      reportStatus: ReportStatus.PENDING,
+      fieldContext,
+      images: [],
+      consent: {
+        agreedToAIAnalysis: true,
+        agreedToDataSharing: true,
+        consentVersion: 'json-v1',
+        consentedAt: new Date(),
+      },
+      farmerNotes: payload.farmerNotes,
+      actionTaken: payload.actionTaken,
+      assignmentNotes: payload.assignmentNotes,
+      isActive: true,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    await AuditService.log({
+      userId: userId.toString(),
+      organizationId: tenantId.toString(),
+      action: 'pest_disease_detection.json_report_created',
+      resource: 'PestDiseaseReport',
+      resourceId: report._id.toString(),
+      details: {
+        metadata: {
+          farmerId: String(farmerId),
+          farmId: String(farmId),
+          cropType: fieldContext.cropType,
+        },
+      },
+    });
+
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
+  }
+
+  /**
+   * Update JSON-friendly fields on pest/disease report
+   */
+  async updateReportJson(
+    reportId: Types.ObjectId | string,
+    tenantId: Types.ObjectId,
+    userId: Types.ObjectId,
+    payload: {
+      farmerNotes?: string;
+      actionTaken?: string;
+      assignmentNotes?: string;
+      reportStatus?: ReportStatus;
+      outcome?: {
+        isResolved?: boolean;
+        effectiveness?: 'poor' | 'fair' | 'good' | 'excellent';
+        notes?: string;
+      };
+    }
+  ): Promise<InstanceType<typeof PestDiseaseReport>> {
+    const report = await PestDiseaseReport.findOne({
+      _id: reportId,
+      tenantId,
+      isActive: true,
+    });
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    if (payload.farmerNotes !== undefined) report.farmerNotes = payload.farmerNotes;
+    if (payload.actionTaken !== undefined) report.actionTaken = payload.actionTaken;
+    if (payload.assignmentNotes !== undefined) report.assignmentNotes = payload.assignmentNotes;
+    if (payload.reportStatus !== undefined) report.reportStatus = payload.reportStatus;
+
+    if (payload.outcome) {
+      report.outcome = {
+        ...(report.outcome || { isResolved: false, effectiveness: 'good' }),
+        ...payload.outcome,
+        ...(payload.outcome.isResolved ? { resolvedAt: report.outcome?.resolvedAt || new Date() } : {}),
+      };
+
+      if (payload.outcome.isResolved === true && report.reportStatus !== ReportStatus.ARCHIVED) {
+        report.reportStatus = ReportStatus.CONFIRMED;
+      }
+    }
+
+    report.updatedBy = userId;
+    await report.save();
+
+    await AuditService.log({
+      userId: userId.toString(),
+      organizationId: tenantId.toString(),
+      action: 'pest_disease_detection.report_updated',
+      resource: 'PestDiseaseReport',
+      resourceId: report._id.toString(),
+      details: {
+        metadata: {
+          updatedFields: Object.keys(payload),
+        },
+      },
+    });
+
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
+  }
+
+  /**
+   * Soft delete pest/disease report
+   */
+  async deleteReport(
+    reportId: Types.ObjectId | string,
+    tenantId: Types.ObjectId,
+    userId: Types.ObjectId
+  ): Promise<void> {
+    const report = await PestDiseaseReport.findOne({
+      _id: reportId,
+      tenantId,
+      isActive: true,
+    });
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    await report.softDelete(userId);
+
+    await AuditService.log({
+      userId: userId.toString(),
+      organizationId: tenantId.toString(),
+      action: 'pest_disease_detection.report_deleted',
+      resource: 'PestDiseaseReport',
+      resourceId: report._id.toString(),
+      details: {
+        metadata: {
+          reportStatus: report.reportStatus,
+        },
+      },
+      risk: 'medium',
+    });
+  }
+
+  /**
+   * Assign pest/disease report for follow-up
+   */
+  async assignReport(
+    reportId: Types.ObjectId | string,
+    tenantId: Types.ObjectId,
+    actorId: Types.ObjectId,
+    payload: {
+      assigneeId?: Types.ObjectId | string;
+      notes?: string;
+    }
+  ): Promise<InstanceType<typeof PestDiseaseReport>> {
+    const report = await PestDiseaseReport.findOne({
+      _id: reportId,
+      tenantId,
+      isActive: true,
+    });
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    if (report.closedAt || report.reportStatus === ReportStatus.ARCHIVED) {
+      throw new AppError('Cannot assign a closed report', 400, 'INVALID_TRANSITION');
+    }
+
+    const assignee = payload.assigneeId ? new Types.ObjectId(payload.assigneeId) : actorId;
+    report.assignedTo = assignee;
+    report.assignedBy = actorId;
+    report.assignedAt = new Date();
+    report.assignmentNotes = payload.notes;
+
+    if ([ReportStatus.PENDING, ReportStatus.PROCESSING, ReportStatus.COMPLETED].includes(report.reportStatus)) {
+      report.reportStatus = ReportStatus.EXPERT_REVIEW;
+    }
+
+    report.updatedBy = actorId;
+    await report.save();
+
+    await AuditService.log({
+      userId: actorId.toString(),
+      organizationId: tenantId.toString(),
+      action: 'pest_disease_detection.report_assigned',
+      resource: 'PestDiseaseReport',
+      resourceId: report._id.toString(),
+      details: {
+        metadata: {
+          assigneeId: assignee.toString(),
+          notes: payload.notes,
+        },
+      },
+    });
+
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
+  }
+
+  /**
+   * Close pest/disease report
+   */
+  async closeReport(
+    reportId: Types.ObjectId | string,
+    tenantId: Types.ObjectId,
+    actorId: Types.ObjectId,
+    payload: {
+      reason?: string;
+      resolutionNotes?: string;
+    }
+  ): Promise<InstanceType<typeof PestDiseaseReport>> {
+    const report = await PestDiseaseReport.findOne({
+      _id: reportId,
+      tenantId,
+      isActive: true,
+    });
+
+    if (!report) {
+      throw new AppError('Report not found', 404, 'REPORT_NOT_FOUND');
+    }
+
+    if (report.closedAt || report.reportStatus === ReportStatus.ARCHIVED) {
+      throw new AppError('Report is already closed', 400, 'INVALID_TRANSITION');
+    }
+
+    report.closedAt = new Date();
+    report.closedBy = actorId;
+    report.closeReason = payload.reason;
+    report.outcome = {
+      ...(report.outcome || { isResolved: false, effectiveness: 'good' }),
+      isResolved: true,
+      resolvedAt: report.outcome?.resolvedAt || new Date(),
+      notes: payload.resolutionNotes || report.outcome?.notes,
+    };
+    report.reportStatus = ReportStatus.ARCHIVED;
+    report.updatedBy = actorId;
+
+    await report.save();
+
+    await AuditService.log({
+      userId: actorId.toString(),
+      organizationId: tenantId.toString(),
+      action: 'pest_disease_detection.report_closed',
+      resource: 'PestDiseaseReport',
+      resourceId: report._id.toString(),
+      details: {
+        metadata: {
+          reason: payload.reason,
+          resolutionNotes: payload.resolutionNotes,
+        },
+      },
+    });
+
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
   }
 
   /**
@@ -468,6 +833,14 @@ class PestDiseaseService {
       ? ReportStatus.REJECTED
       : ReportStatus.COMPLETED;
 
+    if (report.reportStatus === ReportStatus.CONFIRMED) {
+      report.outcome = {
+        ...(report.outcome || { isResolved: false, effectiveness: 'good' }),
+        isResolved: true,
+        resolvedAt: new Date(),
+      };
+    }
+
     await report.save();
 
     await AuditService.log({
@@ -484,7 +857,7 @@ class PestDiseaseService {
       }
     });
 
-    return report as unknown as InstanceType<typeof PestDiseaseReport>;
+    return this.withUiStatus(report as unknown as InstanceType<typeof PestDiseaseReport>);
   }
 
   /**

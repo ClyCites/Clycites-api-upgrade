@@ -72,6 +72,24 @@ class FarmersController {
     await this.assertCanAccessFarmer(req, input.farmerId as mongoose.Types.ObjectId);
   }
 
+  private async assertCanAccessGrowthStage(req: AuthRequest, stageId: mongoose.Types.ObjectId): Promise<void> {
+    if (this.isPrivilegedRole(req.user?.role)) {
+      return;
+    }
+
+    const stage = await FarmersService.getGrowthStage(stageId);
+    await this.assertCanAccessFarmer(req, stage.farmerId as mongoose.Types.ObjectId);
+  }
+
+  private async assertCanAccessYieldPrediction(req: AuthRequest, predictionId: mongoose.Types.ObjectId): Promise<void> {
+    if (this.isPrivilegedRole(req.user?.role)) {
+      return;
+    }
+
+    const prediction = await FarmersService.getYieldPrediction(predictionId);
+    await this.assertCanAccessFarmer(req, prediction.farmerId as mongoose.Types.ObjectId);
+  }
+
   // ==================== FARMER PROFILE ENDPOINTS ====================
 
   /**
@@ -475,13 +493,25 @@ class FarmersController {
       const farmerId = new mongoose.Types.ObjectId(req.params.farmerId);
       await this.assertCanAccessFarmer(req, farmerId);
 
-      const crops = await FarmersService.getFarmerCrops(farmerId, {
+      const result = await FarmersService.getFarmerCrops(farmerId, {
         year: req.query.year ? parseInt(req.query.year as string, 10) : undefined,
         season: req.query.season as string,
         cropName: req.query.cropName as string,
+        page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
       });
 
-      sendSuccess(res, crops);
+      ResponseHandler.paginated(
+        res,
+        result.crops,
+        {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+        },
+        'Crop production records retrieved successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -532,6 +562,250 @@ class FarmersController {
       const deletedBy = new mongoose.Types.ObjectId(req.user!.id);
       await FarmersService.deleteCropProduction(cropId, deletedBy);
       sendSuccess(res, null, 'Crop production deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/farmers/:farmerId/production/growth-stages
+   * List growth stages for a farmer
+   */
+  async getFarmerGrowthStages(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const farmerId = new mongoose.Types.ObjectId(req.params.farmerId);
+      await this.assertCanAccessFarmer(req, farmerId);
+
+      const result = await FarmersService.getFarmerGrowthStages(farmerId, {
+        page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        cycleId: req.query.cycleId as string,
+        cropId: req.query.cropId as string,
+        stage: req.query.stage as string,
+        status: req.query.status as string,
+      });
+
+      ResponseHandler.paginated(
+        res,
+        result.stages,
+        {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+        },
+        'Growth stages retrieved successfully'
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/farmers/:farmerId/production/growth-stages
+   * Create growth stage for a farmer
+   */
+  async createGrowthStage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const farmerId = new mongoose.Types.ObjectId(req.params.farmerId);
+      await this.assertCanAccessFarmer(req, farmerId);
+
+      const createdBy = new mongoose.Types.ObjectId(req.user!.id);
+      const stage = await FarmersService.createGrowthStage(farmerId, {
+        ...req.body,
+        cycleId: new mongoose.Types.ObjectId(req.body.cycleId),
+        ...(req.body.cropId ? { cropId: new mongoose.Types.ObjectId(req.body.cropId) } : {}),
+      }, createdBy);
+
+      sendSuccess(res, stage, 'Growth stage created successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/farmers/production/growth-stages/:stageId
+   * Get growth stage by ID
+   */
+  async getGrowthStage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const stageId = new mongoose.Types.ObjectId(req.params.stageId);
+      await this.assertCanAccessGrowthStage(req, stageId);
+
+      const stage = await FarmersService.getGrowthStage(stageId);
+      sendSuccess(res, stage);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/farmers/production/growth-stages/:stageId
+   * Update growth stage
+   */
+  async updateGrowthStage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const stageId = new mongoose.Types.ObjectId(req.params.stageId);
+      await this.assertCanAccessGrowthStage(req, stageId);
+
+      const modifiedBy = new mongoose.Types.ObjectId(req.user!.id);
+      const updates = {
+        ...req.body,
+        ...(req.body.cycleId ? { cycleId: new mongoose.Types.ObjectId(req.body.cycleId) } : {}),
+        ...(req.body.cropId ? { cropId: new mongoose.Types.ObjectId(req.body.cropId) } : {}),
+      };
+
+      const stage = await FarmersService.updateGrowthStage(stageId, updates, modifiedBy);
+      sendSuccess(res, stage, 'Growth stage updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/farmers/production/growth-stages/:stageId
+   * Soft delete growth stage
+   */
+  async deleteGrowthStage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const stageId = new mongoose.Types.ObjectId(req.params.stageId);
+      await this.assertCanAccessGrowthStage(req, stageId);
+
+      const deletedBy = new mongoose.Types.ObjectId(req.user!.id);
+      await FarmersService.deleteGrowthStage(stageId, deletedBy);
+      sendSuccess(res, null, 'Growth stage deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/farmers/:farmerId/production/yield-predictions
+   * List yield predictions for a farmer
+   */
+  async getFarmerYieldPredictions(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const farmerId = new mongoose.Types.ObjectId(req.params.farmerId);
+      await this.assertCanAccessFarmer(req, farmerId);
+
+      const result = await FarmersService.getFarmerYieldPredictions(farmerId, {
+        page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        cropId: req.query.cropId as string,
+        status: req.query.status as string,
+      });
+
+      ResponseHandler.paginated(
+        res,
+        result.predictions,
+        {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+        },
+        'Yield predictions retrieved successfully'
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/farmers/:farmerId/production/yield-predictions
+   * Create yield prediction for a farmer
+   */
+  async createYieldPrediction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const farmerId = new mongoose.Types.ObjectId(req.params.farmerId);
+      await this.assertCanAccessFarmer(req, farmerId);
+
+      const createdBy = new mongoose.Types.ObjectId(req.user!.id);
+      const prediction = await FarmersService.createYieldPrediction(
+        farmerId,
+        {
+          ...req.body,
+          cropId: new mongoose.Types.ObjectId(req.body.cropId),
+        },
+        createdBy
+      );
+
+      sendSuccess(res, prediction, 'Yield prediction created successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/farmers/production/yield-predictions/:predictionId
+   * Get yield prediction by ID
+   */
+  async getYieldPrediction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const predictionId = new mongoose.Types.ObjectId(req.params.predictionId);
+      await this.assertCanAccessYieldPrediction(req, predictionId);
+
+      const prediction = await FarmersService.getYieldPrediction(predictionId);
+      sendSuccess(res, prediction);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/farmers/production/yield-predictions/:predictionId
+   * Update yield prediction
+   */
+  async updateYieldPrediction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const predictionId = new mongoose.Types.ObjectId(req.params.predictionId);
+      await this.assertCanAccessYieldPrediction(req, predictionId);
+
+      const modifiedBy = new mongoose.Types.ObjectId(req.user!.id);
+      const updates = {
+        ...req.body,
+        ...(req.body.cropId ? { cropId: new mongoose.Types.ObjectId(req.body.cropId) } : {}),
+      };
+      const prediction = await FarmersService.updateYieldPrediction(predictionId, updates, modifiedBy);
+      sendSuccess(res, prediction, 'Yield prediction updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/farmers/production/yield-predictions/:predictionId
+   * Soft delete yield prediction
+   */
+  async deleteYieldPrediction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const predictionId = new mongoose.Types.ObjectId(req.params.predictionId);
+      await this.assertCanAccessYieldPrediction(req, predictionId);
+
+      const deletedBy = new mongoose.Types.ObjectId(req.user!.id);
+      await FarmersService.deleteYieldPrediction(predictionId, deletedBy);
+      sendSuccess(res, null, 'Yield prediction deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/farmers/production/yield-predictions/:predictionId/refresh
+   * Refresh yield prediction
+   */
+  async refreshYieldPrediction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const predictionId = new mongoose.Types.ObjectId(req.params.predictionId);
+      await this.assertCanAccessYieldPrediction(req, predictionId);
+
+      const modifiedBy = new mongoose.Types.ObjectId(req.user!.id);
+      const updates = {
+        ...req.body,
+        ...(req.body.cropId ? { cropId: new mongoose.Types.ObjectId(req.body.cropId) } : {}),
+      };
+      const prediction = await FarmersService.refreshYieldPrediction(predictionId, updates, modifiedBy);
+      sendSuccess(res, prediction, 'Yield prediction refreshed successfully');
     } catch (error) {
       next(error);
     }

@@ -4,12 +4,15 @@ import FarmEnterprise, { IFarmEnterprise } from './farmEnterprise.model';
 import { CropProduction, LivestockProduction, ICropProduction, ILivestockProduction } from './production.model';
 import Plot, { IPlot } from './plot.model';
 import FarmerInput, { IFarmerInput } from './input.model';
+import GrowthStage, { IGrowthStage, GrowthStageStatus } from './growthStage.model';
+import YieldPrediction, { IYieldPrediction, YieldPredictionStatus } from './yieldPrediction.model';
 import FarmerMembership, { IFarmerMembership } from './farmerMembership.model';
 import { AuditService } from '../audit';
 import { NotFoundError, BadRequestError } from '../../common/errors/AppError';
 import logger from '../../common/utils/logger';
 
 type FarmerVerificationStatus = 'draft' | 'submitted' | 'verified' | 'rejected';
+type CropUiStatus = 'planned' | 'active' | 'completed';
 
 const STATUS_VARIANTS: Record<FarmerVerificationStatus, string[]> = {
   draft: ['draft', 'unverified'],
@@ -70,6 +73,67 @@ class FarmersService {
     farmer.verificationReviewedAt = farmer.verificationReviewedAt || farmer.verifiedAt || undefined;
     farmer.verificationReason = farmer.verificationReason || farmer.rejectionReason || undefined;
     return farmer;
+  }
+
+  private mapCropUiStatus(status: ICropProduction['productionStatus']): CropUiStatus {
+    switch (status) {
+    case 'planned':
+      return 'planned';
+    case 'in_progress':
+      return 'active';
+    case 'harvested':
+    case 'sold':
+    case 'stored':
+    case 'failed':
+      return 'completed';
+    default:
+      return 'planned';
+    }
+  }
+
+  private mapUiStatusToCropStatus(uiStatus: CropUiStatus): ICropProduction['productionStatus'] {
+    switch (uiStatus) {
+    case 'planned':
+      return 'planned';
+    case 'active':
+      return 'in_progress';
+    case 'completed':
+      return 'harvested';
+    default:
+      return 'planned';
+    }
+  }
+
+  private withCropUiStatus(crop: ICropProduction): ICropProduction & { uiStatus: CropUiStatus } {
+    return Object.assign(crop, {
+      uiStatus: this.mapCropUiStatus(crop.productionStatus),
+    });
+  }
+
+  private withCropUiStatusForList(crops: ICropProduction[]): Array<ICropProduction & { uiStatus: CropUiStatus }> {
+    return crops.map((crop) => this.withCropUiStatus(crop));
+  }
+
+  private normalizeGrowthStageStatus(status?: string): GrowthStageStatus {
+    switch (status) {
+    case 'planned':
+    case 'completed':
+      return status;
+    case 'active':
+    default:
+      return 'active';
+    }
+  }
+
+  private normalizeYieldPredictionStatus(status?: string): YieldPredictionStatus {
+    switch (status) {
+    case 'refreshed':
+    case 'archived':
+      return status;
+    case 'generated':
+    default:
+      return 'generated';
+    }
   }
 
   // ==================== FARMER PROFILE MANAGEMENT ====================
@@ -591,10 +655,15 @@ class FarmersService {
       throw new NotFoundError('Farm not found or does not belong to this farmer');
     }
     
+    const incomingUiStatus = (data as Partial<{ uiStatus: CropUiStatus }>).uiStatus;
+    const productionStatus = data.productionStatus
+      ?? (incomingUiStatus ? this.mapUiStatusToCropStatus(incomingUiStatus) : undefined);
+
     const production = new CropProduction({
       farmerId,
       farmId,
       ...data,
+      ...(productionStatus ? { productionStatus } : {}),
       createdBy,
       lastModifiedBy: createdBy,
     });
@@ -615,7 +684,7 @@ class FarmersService {
       },
     });
     
-    return production;
+    return this.withCropUiStatus(production);
   }
   
   /**
@@ -672,7 +741,7 @@ class FarmersService {
       productionType?: 'crops' | 'livestock' | 'all';
     } = {}
   ): Promise<{
-    crops: ICropProduction[];
+    crops: Array<ICropProduction & { uiStatus: CropUiStatus }>;
     livestock: ILivestockProduction[];
   }> {
     const productionType = options.productionType || 'all';
@@ -699,7 +768,7 @@ class FarmersService {
       livestock = await LivestockProduction.find(livestockFilter).sort({ year: -1 });
     }
     
-    return { crops, livestock };
+    return { crops: this.withCropUiStatusForList(crops), livestock };
   }
 
   /**
@@ -711,15 +780,39 @@ class FarmersService {
       year?: number;
       season?: string;
       cropName?: string;
+      page?: number;
+      limit?: number;
     } = {}
-  ): Promise<ICropProduction[]> {
+  ): Promise<{
+    crops: Array<ICropProduction & { uiStatus: CropUiStatus }>;
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filter: any = { farmerId, isActive: true };
     if (options.year) filter.year = options.year;
     if (options.season) filter.season = options.season;
     if (options.cropName) filter.cropName = options.cropName;
 
-    return CropProduction.find(filter).sort({ createdAt: -1 });
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [rows, total] = await Promise.all([
+      CropProduction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      CropProduction.countDocuments(filter),
+    ]);
+
+    const crops = this.withCropUiStatusForList(rows);
+    return {
+      crops,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   /**
@@ -730,7 +823,7 @@ class FarmersService {
     if (!crop) {
       throw new NotFoundError('Crop production record not found');
     }
-    return crop;
+    return this.withCropUiStatus(crop);
   }
 
   /**
@@ -754,6 +847,11 @@ class FarmersService {
       }
     }
 
+    const incomingUiStatus = (updates as Partial<{ uiStatus: CropUiStatus }>).uiStatus;
+    if (!updates.productionStatus && incomingUiStatus) {
+      updates.productionStatus = this.mapUiStatusToCropStatus(incomingUiStatus);
+    }
+
     updates.version = (crop.version || 1) + 1;
     updates.lastModifiedBy = modifiedBy;
 
@@ -770,7 +868,7 @@ class FarmersService {
       },
     });
 
-    return crop;
+    return this.withCropUiStatus(crop);
   }
 
   /**
@@ -794,6 +892,414 @@ class FarmersService {
       userId: deletedBy?.toString(),
       risk: 'medium',
     });
+  }
+
+  // ==================== GROWTH STAGES MANAGEMENT ====================
+
+  /**
+   * Create growth stage record
+   */
+  async createGrowthStage(
+    farmerId: mongoose.Types.ObjectId,
+    data: Partial<IGrowthStage>,
+    createdBy?: mongoose.Types.ObjectId
+  ): Promise<IGrowthStage> {
+    await this.getFarmerProfile(farmerId);
+
+    if (!data.cycleId) {
+      throw new BadRequestError('cycleId is required');
+    }
+
+    const cycle = await CropProduction.findOne({
+      _id: data.cycleId,
+      farmerId,
+      isActive: true,
+    });
+    if (!cycle) {
+      throw new NotFoundError('Crop cycle not found or does not belong to this farmer');
+    }
+
+    if (data.cropId) {
+      const crop = await CropProduction.findOne({
+        _id: data.cropId,
+        farmerId,
+        isActive: true,
+      });
+      if (!crop) {
+        throw new NotFoundError('Crop not found or does not belong to this farmer');
+      }
+    }
+
+    const stage = new GrowthStage({
+      farmerId,
+      ...data,
+      status: this.normalizeGrowthStageStatus(data.status),
+      createdBy,
+      lastModifiedBy: createdBy,
+    });
+
+    await stage.save();
+
+    await AuditService.log({
+      action: 'farmers.growth_stage_created',
+      resource: 'growth_stage',
+      resourceId: stage._id.toString(),
+      userId: createdBy?.toString(),
+      details: {
+        metadata: {
+          stage: stage.stage,
+          cycleId: stage.cycleId.toString(),
+        },
+      },
+    });
+
+    return stage;
+  }
+
+  /**
+   * List growth stage records for a farmer
+   */
+  async getFarmerGrowthStages(
+    farmerId: mongoose.Types.ObjectId,
+    options: {
+      page?: number;
+      limit?: number;
+      cycleId?: string;
+      cropId?: string;
+      stage?: string;
+      status?: string;
+    } = {}
+  ): Promise<{
+    stages: IGrowthStage[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: any = { farmerId, isActive: true };
+    if (options.cycleId) filter.cycleId = new mongoose.Types.ObjectId(options.cycleId);
+    if (options.cropId) filter.cropId = new mongoose.Types.ObjectId(options.cropId);
+    if (options.stage) filter.stage = options.stage;
+    if (options.status) filter.status = this.normalizeGrowthStageStatus(options.status);
+
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [stages, total] = await Promise.all([
+      GrowthStage.find(filter).sort({ observedAt: -1, createdAt: -1 }).skip(skip).limit(limit),
+      GrowthStage.countDocuments(filter),
+    ]);
+
+    return {
+      stages,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get growth stage by ID
+   */
+  async getGrowthStage(id: mongoose.Types.ObjectId): Promise<IGrowthStage> {
+    const stage = await GrowthStage.findOne({ _id: id, isActive: true });
+    if (!stage) {
+      throw new NotFoundError('Growth stage not found');
+    }
+    return stage;
+  }
+
+  /**
+   * Update growth stage record
+   */
+  async updateGrowthStage(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<IGrowthStage>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<IGrowthStage> {
+    const stage = await this.getGrowthStage(id);
+
+    if (updates.cycleId) {
+      const cycle = await CropProduction.findOne({
+        _id: updates.cycleId,
+        farmerId: stage.farmerId,
+        isActive: true,
+      });
+      if (!cycle) {
+        throw new NotFoundError('Crop cycle not found or does not belong to this farmer');
+      }
+    }
+
+    if (updates.cropId) {
+      const crop = await CropProduction.findOne({
+        _id: updates.cropId,
+        farmerId: stage.farmerId,
+        isActive: true,
+      });
+      if (!crop) {
+        throw new NotFoundError('Crop not found or does not belong to this farmer');
+      }
+    }
+
+    if (updates.status) {
+      updates.status = this.normalizeGrowthStageStatus(updates.status);
+    }
+
+    updates.version = (stage.version || 1) + 1;
+    updates.lastModifiedBy = modifiedBy;
+
+    Object.assign(stage, updates);
+    await stage.save();
+
+    await AuditService.log({
+      action: 'farmers.growth_stage_updated',
+      resource: 'growth_stage',
+      resourceId: stage._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: { updates: Object.keys(updates) },
+      },
+    });
+
+    return stage;
+  }
+
+  /**
+   * Soft delete growth stage
+   */
+  async deleteGrowthStage(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const stage = await this.getGrowthStage(id);
+    await stage.softDelete(deletedBy);
+
+    await AuditService.log({
+      action: 'farmers.growth_stage_deleted',
+      resource: 'growth_stage',
+      resourceId: stage._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
+  }
+
+  // ==================== YIELD PREDICTIONS MANAGEMENT ====================
+
+  /**
+   * Create yield prediction
+   */
+  async createYieldPrediction(
+    farmerId: mongoose.Types.ObjectId,
+    data: Partial<IYieldPrediction>,
+    createdBy?: mongoose.Types.ObjectId
+  ): Promise<IYieldPrediction> {
+    await this.getFarmerProfile(farmerId);
+
+    if (!data.cropId) {
+      throw new BadRequestError('cropId is required');
+    }
+
+    const crop = await CropProduction.findOne({
+      _id: data.cropId,
+      farmerId,
+      isActive: true,
+    });
+    if (!crop) {
+      throw new NotFoundError('Crop production record not found or does not belong to this farmer');
+    }
+
+    const prediction = new YieldPrediction({
+      farmerId,
+      ...data,
+      status: this.normalizeYieldPredictionStatus(data.status),
+      createdBy,
+      lastModifiedBy: createdBy,
+    });
+
+    await prediction.save();
+
+    await AuditService.log({
+      action: 'farmers.yield_prediction_created',
+      resource: 'yield_prediction',
+      resourceId: prediction._id.toString(),
+      userId: createdBy?.toString(),
+      details: {
+        metadata: {
+          cropId: prediction.cropId.toString(),
+          horizonDays: prediction.horizonDays,
+        },
+      },
+    });
+
+    return prediction;
+  }
+
+  /**
+   * List yield predictions for a farmer
+   */
+  async getFarmerYieldPredictions(
+    farmerId: mongoose.Types.ObjectId,
+    options: {
+      page?: number;
+      limit?: number;
+      cropId?: string;
+      status?: string;
+    } = {}
+  ): Promise<{
+    predictions: IYieldPrediction[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: any = { farmerId, isActive: true };
+    if (options.cropId) filter.cropId = new mongoose.Types.ObjectId(options.cropId);
+    if (options.status) filter.status = this.normalizeYieldPredictionStatus(options.status);
+
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const skip = (page - 1) * limit;
+
+    const [predictions, total] = await Promise.all([
+      YieldPrediction.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      YieldPrediction.countDocuments(filter),
+    ]);
+
+    return {
+      predictions,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get yield prediction by ID
+   */
+  async getYieldPrediction(id: mongoose.Types.ObjectId): Promise<IYieldPrediction> {
+    const prediction = await YieldPrediction.findOne({ _id: id, isActive: true });
+    if (!prediction) {
+      throw new NotFoundError('Yield prediction not found');
+    }
+    return prediction;
+  }
+
+  /**
+   * Update yield prediction
+   */
+  async updateYieldPrediction(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<IYieldPrediction>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<IYieldPrediction> {
+    const prediction = await this.getYieldPrediction(id);
+
+    if (updates.cropId) {
+      const crop = await CropProduction.findOne({
+        _id: updates.cropId,
+        farmerId: prediction.farmerId,
+        isActive: true,
+      });
+      if (!crop) {
+        throw new NotFoundError('Crop production record not found or does not belong to this farmer');
+      }
+    }
+
+    if (updates.status) {
+      updates.status = this.normalizeYieldPredictionStatus(updates.status);
+    }
+
+    updates.version = (prediction.version || 1) + 1;
+    updates.lastModifiedBy = modifiedBy;
+
+    Object.assign(prediction, updates);
+    await prediction.save();
+
+    await AuditService.log({
+      action: 'farmers.yield_prediction_updated',
+      resource: 'yield_prediction',
+      resourceId: prediction._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: { updates: Object.keys(updates) },
+      },
+    });
+
+    return prediction;
+  }
+
+  /**
+   * Soft delete yield prediction
+   */
+  async deleteYieldPrediction(
+    id: mongoose.Types.ObjectId,
+    deletedBy?: mongoose.Types.ObjectId
+  ): Promise<void> {
+    const prediction = await this.getYieldPrediction(id);
+    await prediction.softDelete(deletedBy);
+
+    await AuditService.log({
+      action: 'farmers.yield_prediction_deleted',
+      resource: 'yield_prediction',
+      resourceId: prediction._id.toString(),
+      userId: deletedBy?.toString(),
+      risk: 'medium',
+    });
+  }
+
+  /**
+   * Refresh yield prediction
+   */
+  async refreshYieldPrediction(
+    id: mongoose.Types.ObjectId,
+    updates: Partial<IYieldPrediction>,
+    modifiedBy?: mongoose.Types.ObjectId
+  ): Promise<IYieldPrediction> {
+    const prediction = await this.getYieldPrediction(id);
+
+    if (updates.cropId) {
+      const crop = await CropProduction.findOne({
+        _id: updates.cropId,
+        farmerId: prediction.farmerId,
+        isActive: true,
+      });
+      if (!crop) {
+        throw new NotFoundError('Crop production record not found or does not belong to this farmer');
+      }
+    }
+
+    prediction.status = 'refreshed';
+    prediction.refreshedAt = new Date();
+    prediction.version = (prediction.version || 1) + 1;
+    prediction.lastModifiedBy = modifiedBy;
+
+    if (updates.predictedYield !== undefined) prediction.predictedYield = updates.predictedYield;
+    if (updates.confidence !== undefined) prediction.confidence = updates.confidence;
+    if (updates.horizonDays !== undefined) prediction.horizonDays = updates.horizonDays;
+    if (updates.modelVersion !== undefined) prediction.modelVersion = updates.modelVersion;
+    if (updates.notes !== undefined) prediction.notes = updates.notes;
+
+    await prediction.save();
+
+    await AuditService.log({
+      action: 'farmers.yield_prediction_refreshed',
+      resource: 'yield_prediction',
+      resourceId: prediction._id.toString(),
+      userId: modifiedBy?.toString(),
+      details: {
+        metadata: {
+          horizonDays: prediction.horizonDays,
+          modelVersion: prediction.modelVersion,
+        },
+      },
+    });
+
+    return prediction;
   }
 
   // ==================== INPUTS MANAGEMENT ====================

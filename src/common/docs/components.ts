@@ -506,6 +506,43 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
       actualYield: { type: 'number', example: 3800 },
       yieldUnit: { type: 'string', enum: ['kg', 'tons', 'bags', 'bunches', 'pieces'] },
       productionStatus: { type: 'string', enum: ['planned', 'in_progress', 'harvested', 'sold', 'stored', 'failed'] },
+      uiStatus: { type: 'string', enum: ['planned', 'active', 'completed'], example: 'active' },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  FarmerGrowthStage: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      farmerId: mongoId,
+      cycleId: mongoId,
+      cropId: mongoId,
+      stage: { type: 'string', enum: ['seed', 'vegetative', 'flowering', 'maturity', 'harvested'] },
+      observedAt: isoDate,
+      notes: { type: 'string' },
+      status: { type: 'string', enum: ['planned', 'active', 'completed'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  FarmerYieldPrediction: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      farmerId: mongoId,
+      cropId: mongoId,
+      predictedYield: { type: 'number', minimum: 0 },
+      confidence: { type: 'number', minimum: 0, maximum: 1 },
+      horizonDays: { type: 'integer', minimum: 1, maximum: 3650 },
+      modelVersion: { type: 'string', example: 'v1.0' },
+      status: { type: 'string', enum: ['generated', 'refreshed', 'archived'] },
+      refreshedAt: isoDate,
+      notes: { type: 'string' },
       isActive: { type: 'boolean' },
       createdAt: isoDate,
       updatedAt: isoDate,
@@ -932,6 +969,7 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     properties: {
       id: mongoId,
       farmerId: mongoId,
+      farmId: mongoId,
       cropType: { type: 'string', example: 'Maize' },
       reportType: { type: 'string', enum: ['pest', 'disease', 'nutrient_deficiency', 'weather_damage'] },
       aiDetection: {
@@ -943,7 +981,14 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
           recommendations: { type: 'array', items: { type: 'string' } },
         },
       },
-      status: { type: 'string', enum: ['pending', 'analyzed', 'verified', 'resolved'] },
+      reportStatus: { type: 'string', enum: ['pending', 'processing', 'completed', 'expert_review', 'confirmed', 'rejected', 'archived'] },
+      uiStatus: { type: 'string', enum: ['created', 'assigned', 'resolved', 'closed'] },
+      assignedTo: mongoId,
+      assignedBy: mongoId,
+      assignedAt: isoDate,
+      assignmentNotes: { type: 'string' },
+      closedAt: isoDate,
+      closeReason: { type: 'string' },
       location: { type: 'object', properties: { region: { type: 'string' } } },
       imageUrls: { type: 'array', items: { type: 'string', format: 'uri' } },
       createdAt: isoDate,
@@ -985,6 +1030,39 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
   },
 
   // ── Weather ────────────────────────────────────────────────────────────────
+
+  WeatherSensorReading: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      farmId: mongoId,
+      profileId: mongoId,
+      timestamp: isoDate,
+      status: { type: 'string', enum: ['captured', 'flagged', 'verified'] },
+      statusReason: { type: 'string' },
+      flaggedAt: isoDate,
+      flaggedBy: mongoId,
+      verifiedAt: isoDate,
+      verifiedBy: mongoId,
+      reading: {
+        type: 'object',
+        properties: {
+          temperatureCelsius: { type: 'number' },
+          humidity: { type: 'number' },
+          rainfallMm: { type: 'number' },
+          rainfallMmPerHour: { type: 'number' },
+          windSpeedKph: { type: 'number' },
+          windDirectionDeg: { type: 'number' },
+          uvIndex: { type: 'number' },
+          pressureHPa: { type: 'number' },
+        },
+      },
+      qualityFlags: { type: 'array', items: { type: 'string' } },
+      dataSource: { type: 'string', enum: ['open_weather_map', 'tomorrow_io', 'weatherapi', 'meteomatics', 'manual', 'cached', 'iot_device'] },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
 
   WeatherAlert: {
     type: 'object',

@@ -62,6 +62,50 @@ export const pestDiseasePaths: Record<string, unknown> = {
         404: { $ref: '#/components/responses/NotFound' },
       },
     },
+    patch: {
+      tags: ['Pest & Disease'],
+      summary: 'Update pest/disease report fields',
+      operationId: 'updatePestDiseaseReport',
+      security: auth,
+      parameters: [reportIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          farmerNotes: { type: 'string' },
+          actionTaken: { type: 'string' },
+          assignmentNotes: { type: 'string' },
+          reportStatus: { type: 'string', enum: ['pending', 'processing', 'completed', 'expert_review', 'confirmed', 'rejected', 'archived'] },
+          outcome: {
+            type: 'object',
+            properties: {
+              isResolved: { type: 'boolean' },
+              effectiveness: { type: 'string', enum: ['poor', 'fair', 'good', 'excellent'] },
+              notes: { type: 'string' },
+            },
+          },
+        },
+      }),
+      responses: {
+        200: { description: 'Report updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    delete: {
+      tags: ['Pest & Disease'],
+      summary: 'Soft delete a pest/disease report',
+      operationId: 'deletePestDiseaseReport',
+      security: auth,
+      parameters: [reportIdParam],
+      responses: {
+        200: { description: 'Report deleted.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
   },
 
   '/api/v1/pest-disease/farmers/{farmerId}/reports': {
@@ -72,11 +116,43 @@ export const pestDiseasePaths: Record<string, unknown> = {
       security: auth,
       parameters: [
         farmerIdParam, pageParam, limitParam,
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'ai_analyzed', 'expert_reviewed', 'resolved'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'processing', 'completed', 'expert_review', 'confirmed', 'rejected', 'archived', 'created', 'assigned', 'resolved', 'closed'] } },
         { name: 'cropType', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
         200: { description: 'Farmer detection reports.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Create pest/disease report via JSON payload',
+      operationId: 'createPestDiseaseReportJson',
+      security: auth,
+      parameters: [farmerIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['farmId', 'fieldContext'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          fieldContext: {
+            type: 'object',
+            required: ['cropType'],
+            properties: {
+              cropType: { type: 'string' },
+              growthStage: { type: 'string', enum: ['germination', 'seedling', 'vegetative', 'flowering', 'fruiting', 'maturity', 'harvest', 'post_harvest'] },
+              longitude: { type: 'number' },
+              latitude: { type: 'number' },
+            },
+          },
+          farmerNotes: { type: 'string' },
+          actionTaken: { type: 'string' },
+        },
+      }),
+      responses: {
+        201: { description: 'JSON report created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
       },
@@ -138,6 +214,54 @@ export const pestDiseasePaths: Record<string, unknown> = {
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/pest-disease/reports/{reportId}/assign': {
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Assign pest/disease report',
+      operationId: 'assignPestDiseaseReport',
+      security: auth,
+      parameters: [reportIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          assigneeId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          notes: { type: 'string' },
+        },
+      }),
+      responses: {
+        200: { description: 'Report assigned.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/pest-disease/reports/{reportId}/close': {
+    post: {
+      tags: ['Pest & Disease'],
+      summary: 'Close pest/disease report',
+      operationId: 'closePestDiseaseReport',
+      security: auth,
+      parameters: [reportIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          resolutionNotes: { type: 'string' },
+        },
+      }),
+      responses: {
+        200: { description: 'Report closed.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
       },
     },
   },

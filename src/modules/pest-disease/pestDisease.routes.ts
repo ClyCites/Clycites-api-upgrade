@@ -10,6 +10,11 @@ import {
   submitDetection,
   getReport,
   getFarmerReports,
+  createReportJson,
+  updateReport,
+  deleteReport,
+  assignReport,
+  closeReport,
   submitExpertReview,
   submitFeedback,
   getActiveOutbreaks,
@@ -25,6 +30,10 @@ import {
   validateFeedback,
   validateReportId,
   validateFarmerId,
+  validateCreateReportJson,
+  validateUpdateReportJson,
+  validateAssignReport,
+  validateCloseReport,
   validateOutbreakQuery,
   validateHotspotQuery,
   validateAnalyticsQuery,
@@ -100,6 +109,71 @@ router.get(
   authorize('farmer', 'extension_officer', 'agronomist', 'platform_admin'),
   validate([...validateFarmerId, ...validatePagination]),
   getFarmerReports
+);
+
+/**
+ * @route   POST /api/v1/pest-disease/farmers/:farmerId/reports
+ * @desc    Create a pest/disease report using JSON payload
+ * @access  Private
+ */
+router.post(
+  '/farmers/:farmerId/reports',
+  authenticate,
+  authorize('farmer', 'extension_officer', 'agronomist', 'platform_admin'),
+  validate(validateCreateReportJson),
+  createReportJson
+);
+
+/**
+ * @route   PATCH /api/v1/pest-disease/reports/:reportId
+ * @desc    Update JSON-friendly report fields
+ * @access  Private
+ */
+router.patch(
+  '/reports/:reportId',
+  authenticate,
+  authorize('farmer', 'extension_officer', 'agronomist', 'platform_admin'),
+  validate(validateUpdateReportJson),
+  updateReport
+);
+
+/**
+ * @route   DELETE /api/v1/pest-disease/reports/:reportId
+ * @desc    Soft delete report
+ * @access  Private
+ */
+router.delete(
+  '/reports/:reportId',
+  authenticate,
+  authorize('farmer', 'extension_officer', 'agronomist', 'platform_admin'),
+  validate(validateReportId),
+  deleteReport
+);
+
+/**
+ * @route   POST /api/v1/pest-disease/reports/:reportId/assign
+ * @desc    Assign report for follow-up
+ * @access  Private (Extension Officers, Agronomists, Admins)
+ */
+router.post(
+  '/reports/:reportId/assign',
+  authenticate,
+  authorize('extension_officer', 'agronomist', 'platform_admin'),
+  validate(validateAssignReport),
+  assignReport
+);
+
+/**
+ * @route   POST /api/v1/pest-disease/reports/:reportId/close
+ * @desc    Close report
+ * @access  Private (Extension Officers, Agronomists, Admins)
+ */
+router.post(
+  '/reports/:reportId/close',
+  authenticate,
+  authorize('extension_officer', 'agronomist', 'platform_admin'),
+  validate(validateCloseReport),
+  closeReport
 );
 
 // ============================================================================

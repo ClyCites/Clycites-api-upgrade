@@ -257,7 +257,7 @@ router.post(
 router.get(
   '/:farmerId/production/crops',
   authenticate,
-  validate(validators.farmerIdValidator),
+  validate(validators.listCropProductionValidator),
   FarmersController.getFarmerCrops.bind(FarmersController)
 );
 
@@ -295,6 +295,138 @@ router.delete(
   authenticate,
   validate(validators.cropIdValidator),
   FarmersController.deleteCropProduction.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/:farmerId/production/growth-stages
+ * @desc    List growth stage records for a farmer
+ * @access  Private
+ */
+router.get(
+  '/:farmerId/production/growth-stages',
+  authenticate,
+  validate(validators.listGrowthStagesValidator),
+  FarmersController.getFarmerGrowthStages.bind(FarmersController)
+);
+
+/**
+ * @route   POST /api/farmers/:farmerId/production/growth-stages
+ * @desc    Create growth stage record
+ * @access  Private
+ */
+router.post(
+  '/:farmerId/production/growth-stages',
+  authenticate,
+  validate(validators.createGrowthStageValidator),
+  FarmersController.createGrowthStage.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/production/growth-stages/:stageId
+ * @desc    Get growth stage by ID
+ * @access  Private
+ */
+router.get(
+  '/production/growth-stages/:stageId',
+  authenticate,
+  validate(validators.growthStageIdValidator),
+  FarmersController.getGrowthStage.bind(FarmersController)
+);
+
+/**
+ * @route   PATCH /api/farmers/production/growth-stages/:stageId
+ * @desc    Update growth stage
+ * @access  Private
+ */
+router.patch(
+  '/production/growth-stages/:stageId',
+  authenticate,
+  validate(validators.updateGrowthStageValidator),
+  FarmersController.updateGrowthStage.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/production/growth-stages/:stageId
+ * @desc    Soft delete growth stage
+ * @access  Private
+ */
+router.delete(
+  '/production/growth-stages/:stageId',
+  authenticate,
+  validate(validators.growthStageIdValidator),
+  FarmersController.deleteGrowthStage.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/:farmerId/production/yield-predictions
+ * @desc    List yield predictions for a farmer
+ * @access  Private
+ */
+router.get(
+  '/:farmerId/production/yield-predictions',
+  authenticate,
+  validate(validators.listYieldPredictionsValidator),
+  FarmersController.getFarmerYieldPredictions.bind(FarmersController)
+);
+
+/**
+ * @route   POST /api/farmers/:farmerId/production/yield-predictions
+ * @desc    Create yield prediction for a farmer
+ * @access  Private
+ */
+router.post(
+  '/:farmerId/production/yield-predictions',
+  authenticate,
+  validate(validators.createYieldPredictionValidator),
+  FarmersController.createYieldPrediction.bind(FarmersController)
+);
+
+/**
+ * @route   GET /api/farmers/production/yield-predictions/:predictionId
+ * @desc    Get yield prediction by ID
+ * @access  Private
+ */
+router.get(
+  '/production/yield-predictions/:predictionId',
+  authenticate,
+  validate(validators.yieldPredictionIdValidator),
+  FarmersController.getYieldPrediction.bind(FarmersController)
+);
+
+/**
+ * @route   PATCH /api/farmers/production/yield-predictions/:predictionId
+ * @desc    Update yield prediction
+ * @access  Private
+ */
+router.patch(
+  '/production/yield-predictions/:predictionId',
+  authenticate,
+  validate(validators.updateYieldPredictionValidator),
+  FarmersController.updateYieldPrediction.bind(FarmersController)
+);
+
+/**
+ * @route   DELETE /api/farmers/production/yield-predictions/:predictionId
+ * @desc    Soft delete yield prediction
+ * @access  Private
+ */
+router.delete(
+  '/production/yield-predictions/:predictionId',
+  authenticate,
+  validate(validators.yieldPredictionIdValidator),
+  FarmersController.deleteYieldPrediction.bind(FarmersController)
+);
+
+/**
+ * @route   POST /api/farmers/production/yield-predictions/:predictionId/refresh
+ * @desc    Refresh yield prediction
+ * @access  Private
+ */
+router.post(
+  '/production/yield-predictions/:predictionId/refresh',
+  authenticate,
+  validate(validators.refreshYieldPredictionValidator),
+  FarmersController.refreshYieldPrediction.bind(FarmersController)
 );
 
 /**

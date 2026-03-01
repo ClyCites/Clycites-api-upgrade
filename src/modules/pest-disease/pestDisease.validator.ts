@@ -5,7 +5,13 @@
  */
 
 import { body, param, query } from 'express-validator';
-import { GrowthStage, DetectionType, SeverityLevel } from './pestDisease.types';
+import {
+  GrowthStage,
+  DetectionType,
+  SeverityLevel,
+  ReportStatus,
+  WorkspaceIncidentStatus,
+} from './pestDisease.types';
 
 /**
  * Validate detection submission
@@ -153,6 +159,139 @@ export const validateReportId = [
 export const validateFarmerId = [
   param('farmerId')
     .isMongoId().withMessage('Invalid farmer ID format')
+];
+
+/**
+ * Validate JSON report creation
+ */
+export const validateCreateReportJson = [
+  param('farmerId')
+    .isMongoId().withMessage('Invalid farmer ID format'),
+
+  body('farmId')
+    .notEmpty().withMessage('farmId is required')
+    .isMongoId().withMessage('Invalid farm ID format'),
+
+  body('fieldContext.cropType')
+    .notEmpty().withMessage('fieldContext.cropType is required')
+    .trim()
+    .isLength({ min: 2, max: 100 }).withMessage('Crop type must be 2-100 characters'),
+
+  body('fieldContext.growthStage')
+    .optional()
+    .isIn(Object.values(GrowthStage)).withMessage('Invalid growth stage'),
+
+  body('growthStage')
+    .optional()
+    .isIn(Object.values(GrowthStage)).withMessage('Invalid growth stage'),
+
+  body()
+    .custom((value) => {
+      const longitude = value?.fieldContext?.farmLocation?.coordinates?.[0]
+        ?? value?.fieldContext?.longitude
+        ?? value?.longitude;
+      const latitude = value?.fieldContext?.farmLocation?.coordinates?.[1]
+        ?? value?.fieldContext?.latitude
+        ?? value?.latitude;
+
+      if (longitude === undefined || latitude === undefined) {
+        throw new Error('Field context longitude and latitude are required');
+      }
+
+      if (Number(longitude) < -180 || Number(longitude) > 180) {
+        throw new Error('Longitude must be between -180 and 180');
+      }
+
+      if (Number(latitude) < -90 || Number(latitude) > 90) {
+        throw new Error('Latitude must be between -90 and 90');
+      }
+
+      return true;
+    }),
+
+  body('farmerNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('farmerNotes must not exceed 2000 characters'),
+];
+
+/**
+ * Validate JSON report update
+ */
+export const validateUpdateReportJson = [
+  param('reportId')
+    .isMongoId().withMessage('Invalid report ID format'),
+
+  body('farmerNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('farmerNotes must not exceed 2000 characters'),
+
+  body('actionTaken')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('actionTaken must not exceed 2000 characters'),
+
+  body('assignmentNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('assignmentNotes must not exceed 2000 characters'),
+
+  body('reportStatus')
+    .optional()
+    .isIn(Object.values(ReportStatus)).withMessage('Invalid reportStatus'),
+
+  body('uiStatus')
+    .optional()
+    .isIn(Object.values(WorkspaceIncidentStatus)).withMessage('Invalid uiStatus'),
+
+  body('outcome.isResolved')
+    .optional()
+    .isBoolean().withMessage('outcome.isResolved must be boolean'),
+
+  body('outcome.effectiveness')
+    .optional()
+    .isIn(['poor', 'fair', 'good', 'excellent']).withMessage('Invalid outcome.effectiveness'),
+
+  body('outcome.notes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('outcome.notes must not exceed 2000 characters'),
+];
+
+/**
+ * Validate report assignment
+ */
+export const validateAssignReport = [
+  param('reportId')
+    .isMongoId().withMessage('Invalid report ID format'),
+
+  body('assigneeId')
+    .optional()
+    .isMongoId().withMessage('Invalid assignee ID format'),
+
+  body('notes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('notes must not exceed 2000 characters'),
+];
+
+/**
+ * Validate report close payload
+ */
+export const validateCloseReport = [
+  param('reportId')
+    .isMongoId().withMessage('Invalid report ID format'),
+
+  body('reason')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('reason must not exceed 2000 characters'),
+
+  body('resolutionNotes')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 }).withMessage('resolutionNotes must not exceed 2000 characters'),
 ];
 
 /**
