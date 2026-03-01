@@ -1,0 +1,51 @@
+# CODEOWNERS file for ClyCites API
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - All files by default
+* @clycites-org/platform-core
+
+# CI/CD and Infrastructure
+/.github/workflows/ @clycites-org/devops
+/docker/ @clycites-org/devops
+/Dockerfile @clycites-org/devops
+/.github/CODEOWNERS @clycites-org/devops
+/.github/dependabot.yml @clycites-org/devops
+/.github/renovate.json @clycites-org/devops
+
+# Authentication Service
+/src/services/auth/ @clycites-org/platform-core
+/src/common/middleware/auth* @clycites-org/platform-core
+
+# Farmers Module
+/src/services/farmers/ @clycites-org/platform-core
+
+# Marketplace Module
+/src/services/marketplace/ @clycites-org/platform-core
+
+# Products/Catalog Module
+/src/services/products/ @clycites-org/platform-core
+
+# Orders Module
+/src/services/orders/ @clycites-org/platform-core
+
+# Notifications Service
+/src/services/notifications/ @clycites-org/platform-core
+
+# Analytics Service
+/src/services/analytics/ @clycites-org/platform-core
+
+# Configuration and Setup
+/setup.ps1 @clycites-org/devops
+/commitlint.config.js @clycites-org/platform-core
+
+# Documentation
+/*.md @clycites-org/platform-core
+
+# Tests
+/tests/ @clycites-org/platform-core
+
+# Build and Dependencies
+/tsconfig.json @clycites-org/platform-core
+/package.json @clycites-org/platform-core
+/package-lock.json @clycites-org/platform-core
+/.eslintrc.json @clycites-org/platform-core

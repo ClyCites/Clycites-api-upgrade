@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+  push:
+    branches: [ staging, master ]
+    paths:
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+      - 'package.json'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+      
+      - name: Deploy to AWS
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+        run: |
+          echo "Deploying to $ENVIRONMENT environment..."
+          # Add your deployment commands here
+          # Example: aws ecs update-service ...
+      
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment health..."
+          # Add your health check commands here
+      
+      - name: Post deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Deployment to ${{ github.event.inputs.environment || "staging" }} ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,branch,author
+        continue-on-error: true
