@@ -23,6 +23,10 @@ export const createCollectionPointValidator = [
     .optional()
     .isIn(['collection_point', 'warehouse'])
     .withMessage('type must be collection_point or warehouse'),
+  body('status')
+    .optional()
+    .isIn(['active', 'maintenance', 'inactive'])
+    .withMessage('status must be active, maintenance, or inactive'),
   body('organizationId')
     .optional()
     .isMongoId()
@@ -71,6 +75,7 @@ export const updateCollectionPointValidator = [
   ...collectionPointIdValidator,
   body('name').optional().trim().isLength({ min: 2, max: 160 }),
   body('type').optional().isIn(['collection_point', 'warehouse']),
+  body('status').optional().isIn(['active', 'maintenance', 'inactive']),
   body('address').optional().isObject(),
   body('address.country').optional().trim().isLength({ min: 2, max: 80 }),
   body('address.district').optional().trim().isLength({ min: 2, max: 80 }),
@@ -93,6 +98,7 @@ export const updateCollectionPointValidator = [
 export const listCollectionPointsValidator = [
   query('organizationId').optional().isMongoId(),
   query('type').optional().isIn(['collection_point', 'warehouse']),
+  query('status').optional().isIn(['active', 'maintenance', 'inactive']),
   query('district').optional().trim().isLength({ min: 2, max: 80 }),
   query('page').optional().isInt({ min: 1, max: 10000 }).toInt(),
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),

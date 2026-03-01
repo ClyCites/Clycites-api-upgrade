@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ICollectionPoint extends Document {
   name: string;
   type: 'collection_point' | 'warehouse';
+  status: 'active' | 'maintenance' | 'inactive';
   organization?: mongoose.Types.ObjectId;
   createdBy: mongoose.Types.ObjectId;
   address: {
@@ -39,6 +40,12 @@ const CollectionPointSchema = new Schema<ICollectionPoint>(
       type: String,
       enum: ['collection_point', 'warehouse'],
       default: 'collection_point',
+      index: true,
+    },
+    status: {
+      type: String,
+      enum: ['active', 'maintenance', 'inactive'],
+      default: 'active',
       index: true,
     },
     organization: {
@@ -103,6 +110,7 @@ const CollectionPointSchema = new Schema<ICollectionPoint>(
 );
 
 CollectionPointSchema.index({ organization: 1, type: 1, isActive: 1 });
+CollectionPointSchema.index({ organization: 1, type: 1, status: 1, isActive: 1 });
 CollectionPointSchema.index({ 'address.country': 1, 'address.district': 1, isActive: 1 });
 CollectionPointSchema.index({ createdBy: 1, createdAt: -1 });
 

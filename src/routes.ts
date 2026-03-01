@@ -27,6 +27,7 @@ import offerRoutes from './modules/offers/offer.routes';
 import userRoutes from './modules/users/user.routes';
 import platformControlRoutes from './modules/admin/platformControl.routes';
 import logisticsRoutes from './modules/logistics/logistics.routes';
+import aggregationRoutes from './modules/aggregation/aggregation.routes';
 import { ResponseHandler } from './common/utils/response';
 import config from './common/config';
 
@@ -63,6 +64,7 @@ router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace
 router.use(`${API_VERSION}/users`, userRoutes);                   // Admin User Management
 router.use(`${API_VERSION}/admin`, platformControlRoutes);        // Platform Controls
 router.use(`${API_VERSION}/logistics`, logisticsRoutes);          // Logistics & Distribution
+router.use(`${API_VERSION}/aggregation`, aggregationRoutes);      // Aggregation Workspace
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {

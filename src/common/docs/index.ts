@@ -25,6 +25,7 @@ import { organizationsPaths } from './paths/organizations.paths';
 import { offersPaths } from './paths/offers.paths';
 import { adminPaths } from './paths/admin.paths';
 import { logisticsPaths } from './paths/logistics.paths';
+import { aggregationPaths } from './paths/aggregation.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -127,6 +128,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     { name: 'Audit', description: 'Audit log access — user activity, org events, suspicious activities.' },
     { name: 'Admin', description: 'Platform administration operations (require elevated roles).' },
     { name: 'Logistics', description: 'Collection points, shipment lifecycle, tracking, and proof of delivery.' },
+    { name: 'Aggregation', description: 'Warehousing aggregation workflows: bins, batches, grading, stock movement, and spoilage.' },
   ],
 
   paths: {
@@ -155,6 +157,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...offersPaths,
     ...adminPaths,
     ...logisticsPaths,
+    ...aggregationPaths,
   } as OpenAPIV3_1.Document['paths'],
 
   components,

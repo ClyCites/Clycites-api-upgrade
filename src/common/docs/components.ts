@@ -573,6 +573,134 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     },
   },
 
+  // ── Aggregation ───────────────────────────────────────────────────────────
+
+  AggregationWarehouse: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      name: { type: 'string', example: 'Kampala Warehouse A' },
+      type: { type: 'string', enum: ['collection_point', 'warehouse'] },
+      status: { type: 'string', enum: ['active', 'maintenance', 'inactive'] },
+      uiStatus: { type: 'string', enum: ['active', 'maintenance', 'inactive'] },
+      isActive: { type: 'boolean' },
+      organization: mongoId,
+      address: {
+        type: 'object',
+        properties: {
+          country: { type: 'string' },
+          district: { type: 'string' },
+          subCounty: { type: 'string' },
+          parish: { type: 'string' },
+          village: { type: 'string' },
+          line1: { type: 'string' },
+          line2: { type: 'string' },
+        },
+      },
+      coordinates: {
+        type: 'object',
+        properties: {
+          lat: { type: 'number' },
+          lng: { type: 'number' },
+        },
+      },
+      capacityTons: { type: 'number', minimum: 0 },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  AggregationStorageBin: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      warehouseId: mongoId,
+      name: { type: 'string' },
+      capacity: { type: 'number', minimum: 0 },
+      capacityUnit: { type: 'string', enum: ['kg', 'tons', 'bags', 'liters', 'units'] },
+      temperatureControl: { type: 'boolean' },
+      currentLoad: { type: 'number', minimum: 0 },
+      status: { type: 'string', enum: ['available', 'occupied', 'maintenance'] },
+      notes: { type: 'string' },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  AggregationBatch: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      commodity: { type: 'string' },
+      quantity: { type: 'number', minimum: 0 },
+      unit: { type: 'string', enum: ['kg', 'tons', 'bags', 'liters', 'units'] },
+      grade: { type: 'string' },
+      warehouseId: mongoId,
+      binId: mongoId,
+      receivedAt: isoDate,
+      status: { type: 'string', enum: ['received', 'stored', 'dispatched', 'closed'] },
+      notes: { type: 'string' },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  AggregationQualityGrade: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      batchId: mongoId,
+      grade: { type: 'string' },
+      notes: { type: 'string' },
+      assessedBy: mongoId,
+      assessedAt: isoDate,
+      status: { type: 'string', enum: ['draft', 'verified', 'final'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  AggregationStockMovement: {
+    type: 'object',
+    properties: {
+      id: mongoId,
+      shipmentId: mongoId,
+      movementType: { type: 'string', enum: ['receive', 'transfer', 'dispatch'] },
+      sourceId: mongoId,
+      destinationId: mongoId,
+      quantity: { type: 'number', minimum: 0 },
+      status: { type: 'string', enum: ['draft', 'confirmed', 'completed', 'rejected'] },
+      shipmentStatus: { type: 'string', enum: ['created', 'assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled', 'returned'] },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  AggregationSpoilageReport: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      batchId: mongoId,
+      quantity: { type: 'number', minimum: 0 },
+      unit: { type: 'string', enum: ['kg', 'tons', 'bags', 'liters', 'units'] },
+      cause: { type: 'string' },
+      reportedAt: isoDate,
+      reportedBy: mongoId,
+      status: { type: 'string', enum: ['reported', 'approved', 'closed'] },
+      notes: { type: 'string' },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
   // ── Organizations ──────────────────────────────────────────────────────────
 
   Organization: {

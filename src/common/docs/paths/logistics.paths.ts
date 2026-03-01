@@ -4,6 +4,15 @@ export const logisticsPaths: Record<string, unknown> = {
       tags: ['Logistics'],
       summary: 'List collection points and warehouses',
       security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['collection_point', 'warehouse'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'maintenance', 'inactive'] } },
+        { name: 'district', in: 'query', schema: { type: 'string' } },
+        { name: 'includeInactive', in: 'query', schema: { type: 'boolean' } },
+        { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+      ],
       responses: {
         200: { description: 'Collection points retrieved.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -23,6 +32,7 @@ export const logisticsPaths: Record<string, unknown> = {
               properties: {
                 name: { type: 'string' },
                 type: { type: 'string', enum: ['collection_point', 'warehouse'] },
+                status: { type: 'string', enum: ['active', 'maintenance', 'inactive'] },
                 organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
                 address: {
                   type: 'object',
@@ -66,6 +76,45 @@ export const logisticsPaths: Record<string, unknown> = {
       summary: 'Update collection point',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      requestBody: {
+        required: false,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                type: { type: 'string', enum: ['collection_point', 'warehouse'] },
+                status: { type: 'string', enum: ['active', 'maintenance', 'inactive'] },
+                isActive: { type: 'boolean' },
+                address: {
+                  type: 'object',
+                  properties: {
+                    country: { type: 'string' },
+                    district: { type: 'string' },
+                    subCounty: { type: 'string' },
+                    parish: { type: 'string' },
+                    village: { type: 'string' },
+                    line1: { type: 'string' },
+                    line2: { type: 'string' },
+                  },
+                },
+                coordinates: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number' },
+                    lng: { type: 'number' },
+                  },
+                },
+                contactName: { type: 'string' },
+                contactPhone: { type: 'string' },
+                capacityTons: { type: 'number', minimum: 0 },
+                features: { type: 'array', items: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
       responses: {
         200: { description: 'Collection point updated.' },
         403: { $ref: '#/components/responses/Forbidden' },

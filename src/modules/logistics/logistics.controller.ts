@@ -153,10 +153,13 @@ class LogisticsController {
     try {
       const actorId = getActorId(req);
       const organizationId = getOrgContext(req);
+      const requestedStatus = req.body.status as 'active' | 'maintenance' | 'inactive' | undefined;
+      const derivedStatus = requestedStatus || (req.body.isActive === false ? 'inactive' : 'active');
 
       const created = await CollectionPoint.create({
         name: req.body.name,
         type: req.body.type || 'collection_point',
+        status: derivedStatus,
         organization: organizationId,
         createdBy: actorId,
         address: req.body.address,
@@ -165,6 +168,7 @@ class LogisticsController {
         contactPhone: req.body.contactPhone,
         capacityTons: req.body.capacityTons,
         features: req.body.features || [],
+        isActive: derivedStatus !== 'inactive',
       });
 
       await logAudit(req, {
@@ -190,9 +194,11 @@ class LogisticsController {
       const skip = (page - 1) * limit;
       const organizationId = getOrgContext(req);
       const district = typeof req.query.district === 'string' ? req.query.district.trim() : undefined;
+      const status = typeof req.query.status === 'string' ? req.query.status.trim() : undefined;
+      const includeInactive = req.query.includeInactive === 'true';
 
       const filter: Record<string, unknown> = {
-        isActive: req.query.includeInactive === 'true' ? { $in: [true, false] } : true,
+        isActive: includeInactive ? { $in: [true, false] } : true,
       };
 
       if (organizationId) {
@@ -203,6 +209,14 @@ class LogisticsController {
 
       if (typeof req.query.type === 'string') {
         filter.type = req.query.type;
+      }
+
+      if (status) {
+        filter.status = status;
+
+        if (status === 'inactive') {
+          filter.isActive = { $in: [true, false] };
+        }
       }
 
       if (district) {
@@ -259,6 +273,7 @@ class LogisticsController {
       const allowedUpdates = [
         'name',
         'type',
+        'status',
         'address',
         'coordinates',
         'contactName',
@@ -271,6 +286,16 @@ class LogisticsController {
       for (const field of allowedUpdates) {
         if (req.body[field] !== undefined) {
           (point as unknown as Record<string, unknown>)[field] = req.body[field];
+        }
+      }
+
+      if (typeof req.body.status === 'string') {
+        point.isActive = req.body.status !== 'inactive';
+      } else if (typeof req.body.isActive === 'boolean') {
+        if (!req.body.isActive) {
+          point.status = 'inactive';
+        } else if (point.status === 'inactive') {
+          point.status = 'active';
         }
       }
 
@@ -297,6 +322,7 @@ class LogisticsController {
 
       assertEntityAccess(req, point.organization?.toString(), point.createdBy.toString());
       point.isActive = false;
+      point.status = 'inactive';
       await point.save();
 
       await logAudit(req, {
