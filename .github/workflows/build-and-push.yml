@@ -30,7 +30,7 @@ jobs:
         continue-on-error: true
       
       - name: Run tests
-        run: npm test -- --passWithNoTests
+        run: npm test
       
       - name: Generate artifacts
         shell: bash

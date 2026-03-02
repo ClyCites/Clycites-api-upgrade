@@ -29,7 +29,7 @@ jobs:
         run: npm ci
       
       - name: Run full test suite with coverage
-        run: npm test -- --coverage --verbose
+        run: npm test
       
       - name: Upload coverage to Codecov
         if: ${{ hashFiles('coverage/coverage-final.json') != '' }}

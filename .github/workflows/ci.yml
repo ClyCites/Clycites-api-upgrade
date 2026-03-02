@@ -31,7 +31,7 @@ jobs:
       
       
       - name: Run tests
-        run: npm test -- --coverage --passWithNoTests
+        run: npm test
       
       - name: Upload coverage reports
         if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
