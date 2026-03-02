@@ -14,6 +14,31 @@ import { getClientIp } from '../../common/middleware/rateLimiter';
 const POD_UPLOAD_DIR = path.resolve(process.cwd(), 'uploads', 'logistics-pod');
 const ALLOWED_POD_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
 const MAX_POD_FILE_BYTES = 5 * 1024 * 1024;
+type ShipmentUiStatus = 'planned' | 'in_transit' | 'delivered' | 'cancelled';
+
+const SHIPMENT_STATUSES: ShipmentStatus[] = ['created', 'assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled', 'returned'];
+const SHIPMENT_UI_STATUSES: ShipmentUiStatus[] = ['planned', 'in_transit', 'delivered', 'cancelled'];
+const SHIPMENT_UI_TO_NATIVE: Record<ShipmentUiStatus, ShipmentStatus> = {
+  planned: 'created',
+  in_transit: 'in_transit',
+  delivered: 'delivered',
+  cancelled: 'cancelled',
+};
+const SHIPMENT_UI_FILTER_TO_NATIVE: Record<ShipmentUiStatus, ShipmentStatus[]> = {
+  planned: ['created', 'assigned'],
+  in_transit: ['picked_up', 'in_transit'],
+  delivered: ['delivered'],
+  cancelled: ['cancelled', 'returned'],
+};
+const SHIPMENT_STATUS_TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
+  created: ['created', 'assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled'],
+  assigned: ['assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled'],
+  picked_up: ['picked_up', 'in_transit', 'delivered', 'cancelled', 'returned'],
+  in_transit: ['in_transit', 'delivered', 'cancelled', 'returned'],
+  delivered: ['delivered', 'returned'],
+  cancelled: ['cancelled'],
+  returned: ['returned'],
+};
 
 const ensurePodUploadDir = () => {
   if (!fs.existsSync(POD_UPLOAD_DIR)) {
@@ -90,6 +115,24 @@ const getOrgContext = (req: Request): string | undefined => {
   return queryOrg || bodyOrg || headerOrg;
 };
 
+const resolveScopedOrganizationId = (req: Request): string | undefined => {
+  const requestedOrg = getOrgContext(req);
+  const actorOrg = req.user?.orgId;
+
+  if (isSuperAdminRole(req.user?.role)) {
+    return requestedOrg || actorOrg;
+  }
+
+  if (actorOrg) {
+    if (requestedOrg && requestedOrg !== actorOrg) {
+      throw new ForbiddenError('Cannot access logistics resources outside your organization context');
+    }
+    return actorOrg;
+  }
+
+  return requestedOrg;
+};
+
 const assertEntityAccess = (
   req: Request,
   organizationId: string | undefined,
@@ -123,6 +166,78 @@ const buildPagination = (page: number, limit: number, total: number) => {
   return { page, limit, total, totalPages };
 };
 
+const toPlainObject = <T>(value: T): T => {
+  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
+    return (value as { toObject: () => T }).toObject();
+  }
+  return value;
+};
+
+const toShipmentUiStatus = (status: ShipmentStatus): ShipmentUiStatus => {
+  if (status === 'created' || status === 'assigned') {
+    return 'planned';
+  }
+  if (status === 'picked_up' || status === 'in_transit') {
+    return 'in_transit';
+  }
+  if (status === 'delivered') {
+    return 'delivered';
+  }
+  return 'cancelled';
+};
+
+const mapShipmentForUi = <T extends { status: ShipmentStatus }>(shipment: T): T & { uiStatus: ShipmentUiStatus } => {
+  const plain = toPlainObject(shipment);
+  return {
+    ...plain,
+    uiStatus: toShipmentUiStatus(plain.status),
+  };
+};
+
+const toShipmentStatus = (value: unknown): ShipmentStatus | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (SHIPMENT_UI_STATUSES.includes(normalized as ShipmentUiStatus)) {
+    return SHIPMENT_UI_TO_NATIVE[normalized as ShipmentUiStatus];
+  }
+
+  if (SHIPMENT_STATUSES.includes(normalized as ShipmentStatus)) {
+    return normalized as ShipmentStatus;
+  }
+
+  return undefined;
+};
+
+const resolveShipmentStatusesForFilter = (statusParam: unknown, uiStatusParam: unknown): ShipmentStatus[] | undefined => {
+  const source = typeof uiStatusParam === 'string' ? uiStatusParam : statusParam;
+  if (typeof source !== 'string') {
+    return undefined;
+  }
+
+  const normalized = source.trim().toLowerCase();
+
+  if (SHIPMENT_UI_STATUSES.includes(normalized as ShipmentUiStatus)) {
+    return SHIPMENT_UI_FILTER_TO_NATIVE[normalized as ShipmentUiStatus];
+  }
+
+  if (SHIPMENT_STATUSES.includes(normalized as ShipmentStatus)) {
+    return [normalized as ShipmentStatus];
+  }
+
+  return undefined;
+};
+
+const assertShipmentTransition = (current: ShipmentStatus, next: ShipmentStatus): void => {
+  const allowed = SHIPMENT_STATUS_TRANSITIONS[current] || [];
+  if (!allowed.includes(next)) {
+    throw new BadRequestError(`Invalid shipment status transition: ${current} -> ${next}`);
+  }
+};
+
 const logAudit = async (req: Request, payload: {
   action: string;
   resource: string;
@@ -152,7 +267,7 @@ class LogisticsController {
   createCollectionPoint = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actorId = getActorId(req);
-      const organizationId = getOrgContext(req);
+      const organizationId = resolveScopedOrganizationId(req);
       const requestedStatus = req.body.status as 'active' | 'maintenance' | 'inactive' | undefined;
       const derivedStatus = requestedStatus || (req.body.isActive === false ? 'inactive' : 'active');
 
@@ -192,7 +307,7 @@ class LogisticsController {
       const page = Number(req.query.page || 1);
       const limit = Number(req.query.limit || 20);
       const skip = (page - 1) * limit;
-      const organizationId = getOrgContext(req);
+      const organizationId = resolveScopedOrganizationId(req);
       const district = typeof req.query.district === 'string' ? req.query.district.trim() : undefined;
       const status = typeof req.query.status === 'string' ? req.query.status.trim() : undefined;
       const includeInactive = req.query.includeInactive === 'true';
@@ -203,8 +318,6 @@ class LogisticsController {
 
       if (organizationId) {
         filter.organization = organizationId;
-      } else if (req.user?.orgId) {
-        filter.organization = req.user.orgId;
       }
 
       if (typeof req.query.type === 'string') {
@@ -341,7 +454,7 @@ class LogisticsController {
   createShipment = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actorId = getActorId(req);
-      const organizationId = getOrgContext(req);
+      const organizationId = resolveScopedOrganizationId(req);
 
       const shipment = await Shipment.create({
         shipmentNumber: `SHP-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
@@ -379,7 +492,7 @@ class LogisticsController {
         },
       });
 
-      ResponseHandler.created(res, shipment, 'Shipment created');
+      ResponseHandler.created(res, mapShipmentForUi(shipment), 'Shipment created');
     } catch (error) {
       next(error);
     }
@@ -390,17 +503,16 @@ class LogisticsController {
       const page = Number(req.query.page || 1);
       const limit = Number(req.query.limit || 20);
       const skip = (page - 1) * limit;
-      const organizationId = getOrgContext(req);
+      const organizationId = resolveScopedOrganizationId(req);
 
       const filter: Record<string, unknown> = {};
       if (organizationId) {
         filter.organization = organizationId;
-      } else if (req.user?.orgId) {
-        filter.organization = req.user.orgId;
       }
 
-      if (typeof req.query.status === 'string') {
-        filter.status = req.query.status;
+      const requestedStatuses = resolveShipmentStatusesForFilter(req.query.status, req.query.uiStatus);
+      if (requestedStatuses && requestedStatuses.length > 0) {
+        filter.status = requestedStatuses.length === 1 ? requestedStatuses[0] : { $in: requestedStatuses };
       }
 
       if (typeof req.query.shipmentNumber === 'string') {
@@ -421,7 +533,7 @@ class LogisticsController {
 
       ResponseHandler.success(
         res,
-        items,
+        items.map((item) => mapShipmentForUi(item)),
         'Shipments retrieved',
         200,
         { pagination: buildPagination(page, limit, total) }
@@ -439,7 +551,7 @@ class LogisticsController {
       }
 
       assertEntityAccess(req, shipment.organization?.toString(), shipment.createdBy.toString());
-      ResponseHandler.success(res, shipment, 'Shipment retrieved');
+      ResponseHandler.success(res, mapShipmentForUi(shipment), 'Shipment retrieved');
     } catch (error) {
       next(error);
     }
@@ -454,7 +566,12 @@ class LogisticsController {
 
       assertEntityAccess(req, shipment.organization?.toString(), shipment.createdBy.toString());
 
-      const status = req.body.status as ShipmentStatus;
+      const requestedStatus = req.body.uiStatus || req.body.status;
+      const status = toShipmentStatus(requestedStatus);
+      if (!status) {
+        throw new BadRequestError('Invalid shipment status');
+      }
+      assertShipmentTransition(shipment.status, status);
       shipment.status = status;
       shipment.trackingEvents.push({
         status,
@@ -476,11 +593,12 @@ class LogisticsController {
         resourceId: shipment._id.toString(),
         metadata: {
           status,
+          uiStatus: toShipmentUiStatus(status),
         },
         risk: status === 'cancelled' ? 'high' : 'medium',
       });
 
-      ResponseHandler.success(res, shipment, 'Shipment status updated');
+      ResponseHandler.success(res, mapShipmentForUi(shipment), 'Shipment status updated');
     } catch (error) {
       next(error);
     }
@@ -495,8 +613,19 @@ class LogisticsController {
 
       assertEntityAccess(req, shipment.organization?.toString(), shipment.createdBy.toString());
 
+      const requestedStatus = req.body.uiStatus || req.body.status;
+      const status = toShipmentStatus(requestedStatus);
+      if (!status) {
+        throw new BadRequestError('Invalid shipment status for tracking event');
+      }
+
+      if (shipment.status !== status) {
+        assertShipmentTransition(shipment.status, status);
+        shipment.status = status;
+      }
+
       shipment.trackingEvents.push({
-        status: req.body.status as ShipmentStatus,
+        status,
         note: req.body.note,
         location: req.body.location,
         updatedBy: toObjectIdValue(getActorId(req)),
@@ -509,9 +638,13 @@ class LogisticsController {
         action: 'logistics.shipment_tracking_added',
         resource: 'shipment',
         resourceId: shipment._id.toString(),
+        metadata: {
+          status,
+          uiStatus: toShipmentUiStatus(status),
+        },
       });
 
-      ResponseHandler.success(res, shipment, 'Tracking event added');
+      ResponseHandler.success(res, mapShipmentForUi(shipment), 'Tracking event added');
     } catch (error) {
       next(error);
     }
@@ -551,6 +684,7 @@ class LogisticsController {
       };
 
       if (shipment.status !== 'delivered') {
+        assertShipmentTransition(shipment.status, 'delivered');
         shipment.status = 'delivered';
       }
       shipment.actualDeliveredAt = new Date();
@@ -570,7 +704,7 @@ class LogisticsController {
         risk: 'high',
       });
 
-      ResponseHandler.success(res, shipment, 'Proof of delivery uploaded');
+      ResponseHandler.success(res, mapShipmentForUi(shipment), 'Proof of delivery uploaded');
     } catch (error) {
       next(error);
     }

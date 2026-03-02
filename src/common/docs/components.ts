@@ -573,6 +573,112 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     },
   },
 
+  // ── Logistics ─────────────────────────────────────────────────────────────
+
+  LogisticsShipment: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      shipmentNumber: { type: 'string' },
+      organization: mongoId,
+      from: { type: 'object', additionalProperties: true },
+      to: { type: 'object', additionalProperties: true },
+      status: { type: 'string', enum: ['created', 'assigned', 'picked_up', 'in_transit', 'delivered', 'cancelled', 'returned'] },
+      uiStatus: { type: 'string', enum: ['planned', 'in_transit', 'delivered', 'cancelled'] },
+      expectedDeliveryAt: isoDate,
+      actualDeliveredAt: isoDate,
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  LogisticsRoute: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      origin: { type: 'string' },
+      destination: { type: 'string' },
+      distanceKm: { type: 'number', minimum: 0 },
+      waypoints: { type: 'array', items: { type: 'string' } },
+      status: { type: 'string', enum: ['draft', 'active', 'archived'] },
+      uiStatus: { type: 'string', enum: ['draft', 'active', 'archived'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  LogisticsVehicle: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      registration: { type: 'string' },
+      capacityKg: { type: 'number', minimum: 0 },
+      coldChainEnabled: { type: 'boolean' },
+      available: { type: 'boolean' },
+      status: { type: 'string', enum: ['available', 'assigned', 'maintenance', 'inactive'] },
+      uiStatus: { type: 'string', enum: ['available', 'assigned', 'maintenance', 'inactive'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  LogisticsDriver: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organization: mongoId,
+      name: { type: 'string' },
+      phone: { type: 'string' },
+      licenseNumber: { type: 'string' },
+      available: { type: 'boolean' },
+      status: { type: 'string', enum: ['available', 'assigned', 'inactive'] },
+      uiStatus: { type: 'string', enum: ['available', 'assigned', 'inactive'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  LogisticsTrackingEvent: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      shipmentId: mongoId,
+      organization: mongoId,
+      location: { type: 'string' },
+      note: { type: 'string' },
+      eventType: { type: 'string' },
+      recordedAt: isoDate,
+      status: { type: 'string', enum: ['created', 'verified', 'closed'] },
+      uiStatus: { type: 'string', enum: ['created', 'verified', 'closed'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  LogisticsColdChainLog: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      shipmentId: mongoId,
+      organization: mongoId,
+      temperatureC: { type: 'number' },
+      thresholdC: { type: 'number' },
+      violation: { type: 'boolean' },
+      capturedAt: isoDate,
+      status: { type: 'string', enum: ['normal', 'violation', 'resolved'] },
+      uiStatus: { type: 'string', enum: ['normal', 'violation', 'resolved'] },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
   // ── Aggregation ───────────────────────────────────────────────────────────
 
   AggregationWarehouse: {

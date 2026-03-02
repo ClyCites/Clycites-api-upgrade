@@ -26,6 +26,12 @@ All notable changes to this project are documented in this file.
   - collection points/warehouses
   - shipment lifecycle + tracking updates
   - proof-of-delivery upload/metadata (5MB limit with file type validation)
+- Logistics workspace entity APIs under `/api/v1/logistics`:
+  - routes CRUD (`/routes`, `/routes/{routeId}`)
+  - vehicles CRUD (`/vehicles`, `/vehicles/{vehicleId}`)
+  - drivers CRUD (`/drivers`, `/drivers/{driverId}`)
+  - tracking events CRUD (`/tracking-events`, `/tracking-events/{eventId}`)
+  - cold-chain logs CRUD and violation workflow (`/cold-chain-logs`, `/cold-chain-logs/{logId}`, `/cold-chain-logs/flag-violations`)
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -36,6 +42,9 @@ All notable changes to this project are documented in this file.
 - Auth token/session validation now supports revocable Super Admin grant and impersonation session context.
 - OpenAPI components and path docs updated for admin/auth privileged controls.
 - OpenAPI now documents logistics routes and API token access patterns/scopes.
+- Logistics shipment responses now expose canonical `uiStatus` mapping (`planned|in_transit|delivered|cancelled`) to align frontend status enums with native shipment states.
+- Logistics workspace status transition rules are now enforced server-side with explicit `400` errors on invalid transitions.
+- Logistics list endpoints now return consistent pagination metadata in the response envelope for routes, vehicles, drivers, tracking events, and cold-chain logs.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed
