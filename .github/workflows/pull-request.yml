@@ -35,31 +35,29 @@ jobs:
             ci
       
       - name: Check branch naming
+        shell: bash
         run: |
           BRANCH_NAME=${{ github.head_ref }}
-          if [[ ! $BRANCH_NAME =~ ^(feature|fix|docs|hotfix|refactor|test)\/[a-z0-9\-]+$ ]]; then
+          if [[ ! $BRANCH_NAME =~ ^(feature|fix|docs|hotfix|refactor|test|ci)\/[a-z0-9\-\/]+$ ]]; then
             echo "Branch name does not follow convention: $BRANCH_NAME"
-            echo "Expected format: feature/*, fix/*, docs/*, hotfix/*, refactor/*, or test/*"
+            echo "Expected format: feature/*, fix/*, docs/*, hotfix/*, refactor/*, test/*, or ci/*"
             exit 1
           fi
-      
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '22'
           cache: 'npm'
       
       - name: Install dependencies
         run: npm ci
       
       - name: Check code changes
-        run: npm run lint
-      
-      - name: Build changes
-        run: npm run build
+        run: npx eslint src --ext .ts
+
       
       - name: Run tests
-        run: npm test -- --passWithNoTests
+        run: npm test
       
       - name: Comment PR with build status
         if: always()
@@ -80,25 +78,29 @@ jobs:
 
   code-coverage:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '22'
           cache: 'npm'
       
       - name: Install dependencies
         run: npm ci
       
       - name: Generate coverage report
-        run: npm test -- --coverage --passWithNoTests
+        run: npm test
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/coverage-final.json
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true

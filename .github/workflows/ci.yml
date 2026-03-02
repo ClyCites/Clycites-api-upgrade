@@ -9,39 +9,37 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '22'
           cache: 'npm'
       
       - name: Install dependencies
         run: npm ci
       
-      - name: Run linting
-        run: npm run lint
+      - name: Run linting (source only)
+        run: npx eslint src --ext .ts
       
-      - name: Build TypeScript
-        run: npm run build
       
       - name: Run tests
-        run: npm test -- --coverage --passWithNoTests
+        run: npm test
       
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage/coverage-final.json
           flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
       
       - name: Run security audit

@@ -7,6 +7,8 @@ on:
 jobs:
   commitlint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - uses: actions/checkout@v4
@@ -14,10 +16,7 @@ jobs:
           fetch-depth: 0
       
       - name: Validate commit messages
-        uses: wagoid/commitlint-github-action@v5
+        uses: wagoid/commitlint-github-action@v6
         with:
-          configFile: commitlint.config.js
           helpURL: https://commitlint.js.org/
-        env:
-          NODE_PATH: ${{ github.workspace }}/node_modules
         continue-on-error: true

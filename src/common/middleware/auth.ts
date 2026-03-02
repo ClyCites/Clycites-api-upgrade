@@ -5,11 +5,20 @@ import { ForbiddenError, UnauthorizedError } from '../errors/AppError';
 import DeviceService from '../../modules/security/device.service';
 import MFAService from '../../modules/security/mfa.service';
 import AuditService from '../../modules/audit/audit.service';
+import logger from '../utils/logger';
 import { getClientIp } from './rateLimiter';
 import SuperAdminGrant from '../../modules/auth/superAdminGrant.model';
 import ImpersonationSession from '../../modules/auth/impersonationSession.model';
 import ApiTokenService from '../../modules/auth/apiToken.service';
 import { ApiTokenType, IApiTokenRateLimit } from '../../modules/auth/apiToken.model';
+
+type AuthDevice = {
+  isTrusted?: boolean;
+  lastActiveAt?: Date;
+  save?: () => Promise<unknown>;
+};
+
+type AuthenticatedJwtPayload = JwtPayload & { id: string };
 
 export interface JwtPayload {
   id: string;
@@ -31,11 +40,12 @@ export interface JwtPayload {
   impersonatedBy?: string;
   impersonationReason?: string;
   impersonationExpiresAt?: string;
+  [key: string]: unknown;
 }
 
 export interface AuthRequest extends Request {
   user?: JwtPayload;
-  device?: any;
+  device?: AuthDevice;
   requestId?: string;
   apiToken?: {
     id: string;
@@ -57,34 +67,6 @@ export interface AuthRequest extends Request {
     scopes: string[];
     expiresAt: string;
   };
-}
-
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: JwtPayload;
-    device?: any;
-    requestId?: string;
-    apiToken?: {
-      id: string;
-      tokenId: string;
-      tokenType: ApiTokenType;
-      tokenPrefix: string;
-      scopes: string[];
-      orgId?: string;
-      rateLimit: IApiTokenRateLimit;
-    };
-    impersonation?: {
-      sessionId: string;
-      actorId: string;
-      reason: string;
-      expiresAt?: string;
-    };
-    superAdminGrant?: {
-      grantId: string;
-      scopes: string[];
-      expiresAt: string;
-    };
-  }
 }
 
 const isJwtLikeToken = (token: string): boolean => token.split('.').length === 3;
@@ -231,6 +213,20 @@ const resolveAuthenticatedIdentity = async (token: string, req: Request): Promis
   return authenticateApiToken(token, req);
 };
 
+const getAuthenticatedUser = (req: Request): AuthenticatedJwtPayload => {
+  const authReq = req as AuthRequest;
+
+  if (!authReq.user || typeof authReq.user.id !== 'string') {
+    throw new UnauthorizedError('Authentication required');
+  }
+
+  return authReq.user as AuthenticatedJwtPayload;
+};
+
+const isTrustedDevice = (device: unknown): device is AuthDevice => {
+  return typeof device === 'object' && device !== null;
+};
+
 const trackDeviceActivity = async (req: Request, userId: string): Promise<void> => {
   try {
     const deviceInfo = {
@@ -239,12 +235,16 @@ const trackDeviceActivity = async (req: Request, userId: string): Promise<void> 
     };
 
     const device = await DeviceService.registerDevice(userId, deviceInfo);
-    req.device = device;
+    const authReq = req as AuthRequest;
+    authReq.device = device as AuthDevice;
     device.lastActiveAt = new Date();
     await device.save();
   } catch (deviceError) {
     // Device tracking is non-blocking.
-    console.error('Device tracking error:', deviceError);
+    logger.warn('Device tracking error', {
+      userId,
+      error: deviceError,
+    });
   }
 };
 
@@ -315,29 +315,27 @@ export const requireMFA = async (
   next: NextFunction
 ) => {
   try {
-    if (!req.user) {
-      throw new UnauthorizedError('Authentication required');
-    }
+    const user = getAuthenticatedUser(req);
 
-    if (req.user.authType === 'api_token') {
+    if (user.authType === 'api_token') {
       throw new ForbiddenError('MFA verification is only available for session-based authentication');
     }
 
     // Check if MFA is verified in token
-    if (req.user.mfaVerified) {
+    if (user.mfaVerified) {
       return next();
     }
 
     // Check if MFA is required
-    const organizationId = req.headers['x-organization-id'] as string;
-    const mfaRequired = await MFAService.isMFARequired(req.user.id, organizationId);
+    const organizationId = req.headers['x-organization-id'] as string | undefined;
+    const mfaRequired = await MFAService.isMFARequired(user.id, organizationId);
 
     if (!mfaRequired) {
       return next();
     }
 
     // Check if device is trusted (can skip MFA)
-    if (req.device?.isTrusted) {
+    if (isTrustedDevice(req.device) && req.device.isTrusted) {
       return next();
     }
 
@@ -356,9 +354,11 @@ export const detectSuspiciousActivity = async (
   next: NextFunction
 ) => {
   try {
-    if (!req.user) {
+    const authReq = req as AuthRequest;
+    if (!authReq.user || typeof authReq.user.id !== 'string') {
       return next();
     }
+    const user = authReq.user;
 
     const deviceInfo = {
       userAgent: req.headers['user-agent'] || 'unknown',
@@ -367,7 +367,7 @@ export const detectSuspiciousActivity = async (
 
     // Detect suspicious patterns
     const flags = await DeviceService.detectSuspiciousActivity(
-      req.user.id,
+      user.id,
       deviceInfo
     );
 
@@ -376,7 +376,7 @@ export const detectSuspiciousActivity = async (
       await AuditService.log({
         action: 'auth.suspicious_activity',
         resource: 'user',
-        userId: req.user.id,
+        userId: user.id,
         ipAddress: deviceInfo.ipAddress,
         userAgent: deviceInfo.userAgent,
         details: {

@@ -2,6 +2,30 @@ import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../errors/AppError';
 import { canBypassAuthorization, isSuperAdminRole } from './superAdmin';
 
+type AuthorizedUser = {
+  id: string;
+  role: string;
+  permissions: string[];
+};
+
+const getAuthorizedUser = (req: Request): AuthorizedUser => {
+  if (!req.user) {
+    throw new UnauthorizedError('Authentication required');
+  }
+
+  const id = typeof req.user.id === 'string' ? req.user.id : '';
+  const role = typeof req.user.role === 'string' ? req.user.role : '';
+  const permissions = Array.isArray(req.user.permissions)
+    ? req.user.permissions.filter((permission): permission is string => typeof permission === 'string')
+    : [];
+
+  if (!id || !role) {
+    throw new UnauthorizedError('Authentication required');
+  }
+
+  return { id, role, permissions };
+};
+
 const roleMatched = (requiredRoles: string[], actualRole: string): boolean => {
   if (requiredRoles.includes(actualRole)) {
     return true;
@@ -21,15 +45,13 @@ const roleMatched = (requiredRoles: string[], actualRole: string): boolean => {
 export const authorize = (...roles: string[]) => {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      if (!req.user) {
-        return next(new UnauthorizedError('Authentication required'));
-      }
+      const user = getAuthorizedUser(req);
 
       if (canBypassAuthorization(req, ['super_admin:rbac:override'])) {
         return next();
       }
 
-      if (!roleMatched(roles, req.user.role)) {
+      if (!roleMatched(roles, user.role)) {
         return next(
           new ForbiddenError(`Access denied. Required roles: ${roles.join(', ')}`)
         );
@@ -45,17 +67,14 @@ export const authorize = (...roles: string[]) => {
 export const checkPermission = (...permissions: string[]) => {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      if (!req.user) {
-        return next(new UnauthorizedError('Authentication required'));
-      }
+      const user = getAuthorizedUser(req);
 
       if (canBypassAuthorization(req, ['super_admin:rbac:override'])) {
         return next();
       }
 
-      const userPermissions = req.user.permissions || [];
       const hasPermission = permissions.some(permission =>
-        userPermissions.includes(permission)
+        user.permissions.includes(permission)
       );
 
       if (!hasPermission) {
@@ -74,21 +93,19 @@ export const checkPermission = (...permissions: string[]) => {
 export const checkOwnership = (resourceField = 'userId') => {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      if (!req.user) {
-        return next(new UnauthorizedError('Authentication required'));
-      }
+      const user = getAuthorizedUser(req);
 
       if (canBypassAuthorization(req, ['super_admin:ownership:override'])) {
         return next();
       }
 
       // Allow platform-level admins to access any resource
-      if (req.user.role === 'admin' || isSuperAdminRole(req.user.role)) {
+      if (user.role === 'admin' || isSuperAdminRole(user.role)) {
         return next();
       }
 
       const resourceUserId = req.body[resourceField] || req.params[resourceField];
-      if (resourceUserId && resourceUserId !== req.user.id) {
+      if (resourceUserId && resourceUserId !== user.id) {
         return next(new ForbiddenError('You can only access your own resources'));
       }
 

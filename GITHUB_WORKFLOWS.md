@@ -154,15 +154,31 @@ DEPLOYMENT_ROLE_ARN: arn:aws:iam::xxx
 DATABASE_URL: postgresql://xxx
 ```
 
-## Using Workflows Locally
+### Local Development
+
+**Requirements:**
+- Node.js 22
+- pnpm 8+
 
 ### Running Tests Locally
 ```bash
-npm install
-npm test                    # Run tests
-npm test -- --coverage     # With coverage
-npm run lint               # Run linting
-npm run build              # TypeScript build
+# Install dependencies (using pnpm)
+pnpm install
+
+# Run tests
+pnpm test
+
+# Run with coverage
+pnpm test -- --coverage
+
+# Run linting
+pnpm run lint
+
+# Run linting with fix
+pnpm run lint:fix
+
+# TypeScript build
+pnpm run build
 ```
 
 ### Manual Workflow Dispatch
