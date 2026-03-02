@@ -19,6 +19,7 @@ import { mediaPaths } from './paths/media.paths';
 import { securityPaths } from './paths/security.paths';
 import { auditPaths } from './paths/audit.paths';
 import { paymentsPaths } from './paths/payments.paths';
+import { financePaths } from './paths/finance.paths';
 import { reputationPaths } from './paths/reputation.paths';
 import { marketIntelligencePaths } from './paths/marketIntelligence.paths';
 import { organizationsPaths } from './paths/organizations.paths';
@@ -123,6 +124,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     { name: 'Weather', description: 'Weather forecasts, agri-weather summaries, and alert subscriptions.' },
     { name: 'Media', description: 'File upload, storage, and signed-URL delivery.' },
     { name: 'Payments', description: 'Wallet, deposits, withdrawals, transactions, and escrow management.' },
+    { name: 'Finance', description: 'Financial workspace resources: invoices, credits, insurance policies and claims.' },
     { name: 'Reputation', description: 'User ratings, reputation scores, and trust tiers.' },
     { name: 'Market Intelligence', description: 'AI-powered market insights, price recommendations, and intelligence alerts.' },
     { name: 'Audit', description: 'Audit log access — user activity, org events, suspicious activities.' },
@@ -151,6 +153,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...securityPaths,
     ...auditPaths,
     ...paymentsPaths,
+    ...financePaths,
     ...reputationPaths,
     ...marketIntelligencePaths,
     ...organizationsPaths,

@@ -32,6 +32,13 @@ All notable changes to this project are documented in this file.
   - drivers CRUD (`/drivers`, `/drivers/{driverId}`)
   - tracking events CRUD (`/tracking-events`, `/tracking-events/{eventId}`)
   - cold-chain logs CRUD and violation workflow (`/cold-chain-logs`, `/cold-chain-logs/{logId}`, `/cold-chain-logs/flag-violations`)
+- Finance workspace APIs:
+  - payments enhancements for wallet/transactions/escrow with deterministic `uiStatus` fields
+  - dedicated payouts resource under `/api/v1/payments/payouts` with CRUD + approve/fail workflow actions
+  - new finance routes under `/api/v1/finance`:
+    - invoices CRUD + export
+    - credits CRUD + approve/reject/disburse workflows
+    - insurance policies CRUD + claim lifecycle (`/insurance/policies/{policyId}/claims`, `/insurance/claims/{claimId}`)
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -45,6 +52,10 @@ All notable changes to this project are documented in this file.
 - Logistics shipment responses now expose canonical `uiStatus` mapping (`planned|in_transit|delivered|cancelled`) to align frontend status enums with native shipment states.
 - Logistics workspace status transition rules are now enforced server-side with explicit `400` errors on invalid transitions.
 - Logistics list endpoints now return consistent pagination metadata in the response envelope for routes, vehicles, drivers, tracking events, and cold-chain logs.
+- Payments transaction responses now expose canonical `uiStatus` mapping (`pending|completed|failed|reversed`) while preserving native statuses for backward compatibility.
+- Escrow responses now include deterministic `uiStatus` mapping (`created|funded|released|refunded|closed`) and paginated list metadata.
+- Finance resource status transitions (payouts, invoices, credits, insurance policies/claims) now enforce server-side transition validation with explicit `400` errors on invalid transitions.
+- OpenAPI components and path docs now include finance workspace schemas/enums/examples and payout workflow endpoints.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed
