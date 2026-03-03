@@ -43,6 +43,12 @@ All notable changes to this project are documented in this file.
   - org-aware profile listing endpoint (`GET /api/v1/weather/profiles`) for station/workspace management
   - profile-scoped forecast actions (`POST /api/v1/weather/profiles/{profileId}/forecast/refresh`, `GET /api/v1/weather/profiles/{profileId}/forecast/history`)
   - alert rule test endpoint (`POST /api/v1/weather/rules/{id}/test`)
+- Prices workspace API coverage enhancements:
+  - market price status harmonization on existing `/api/v1/prices` CRUD responses with canonical `uiStatus` (`captured|validated|published`)
+  - price estimations CRUD under `/api/v1/pricing/estimations`
+  - price predictions resource CRUD + regenerate under `/api/v1/prices/predictions`
+  - market intelligence recommendations CRUD/workflow (`approve|publish|retract`) under `/api/v1/market-intelligence/recommendations`
+  - market intelligence data source CRUD + refresh under `/api/v1/market-intelligence/data-sources`
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -64,6 +70,9 @@ All notable changes to this project are documented in this file.
 - Weather rule payloads now expose deterministic lifecycle status (`draft|active|disabled`) with validated transition rules on mutation endpoints.
 - Weather workspace list endpoints now return response-envelope pagination metadata for profiles, forecast history, alerts, and rules.
 - OpenAPI docs now include weather workspace endpoint additions, query/body contracts, and explicit status/transition documentation.
+- Market intelligence alerts now expose deterministic signal status (`new|investigating|investigated|dismissed`) with backward-compatible `active/isActive` behavior.
+- Prices workspace status transitions are now validated server-side for estimations, predictions, recommendations, and data sources with explicit `400` errors for invalid transitions.
+- OpenAPI components and path docs now include prices workspace resource schemas/enums/examples for estimations, predictions, recommendations, market signals, and data sources.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed

@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPriceAlert extends Document {
   user: mongoose.Types.ObjectId;
+  organization?: mongoose.Types.ObjectId;
   product: mongoose.Types.ObjectId;
   region?: string;
   district?: string;
@@ -19,6 +20,7 @@ export interface IPriceAlert extends Document {
   frequency: 'instant' | 'daily' | 'weekly';
   
   // Status
+  status: 'new' | 'investigating' | 'investigated' | 'dismissed';
   active: boolean;
   lastTriggered?: Date;
   triggerCount: number;
@@ -33,6 +35,11 @@ const PriceAlertSchema = new Schema<IPriceAlert>(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+      index: true,
+    },
+    organization: {
+      type: Schema.Types.ObjectId,
+      ref: 'Organization',
       index: true,
     },
     product: {
@@ -79,6 +86,12 @@ const PriceAlertSchema = new Schema<IPriceAlert>(
       default: true,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ['new', 'investigating', 'investigated', 'dismissed'],
+      default: 'new',
+      index: true,
+    },
     lastTriggered: Date,
     triggerCount: {
       type: Number,
@@ -93,5 +106,15 @@ const PriceAlertSchema = new Schema<IPriceAlert>(
 // Indexes
 PriceAlertSchema.index({ user: 1, active: 1 });
 PriceAlertSchema.index({ product: 1, active: 1 });
+PriceAlertSchema.index({ organization: 1, status: 1, createdAt: -1 });
+
+PriceAlertSchema.pre('save', function syncLegacyActive(next) {
+  if (this.isModified('status')) {
+    this.active = this.status !== 'dismissed';
+  } else if (this.isModified('active') && this.status === undefined) {
+    this.status = this.active ? 'new' : 'dismissed';
+  }
+  next();
+});
 
 export default mongoose.model<IPriceAlert>('MarketAlert', PriceAlertSchema);

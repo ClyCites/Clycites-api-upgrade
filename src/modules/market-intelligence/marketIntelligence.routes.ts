@@ -85,4 +85,62 @@ router.post(
   marketIntelligenceController.checkPriceAlerts
 );
 
+/**
+ * @route   GET /api/market-intelligence/recommendations
+ * @desc    List recommendation resources
+ * @access  Authenticated users (scoped)
+ */
+router.get('/recommendations', marketIntelligenceController.listRecommendations);
+
+/**
+ * @route   POST /api/market-intelligence/recommendations
+ * @desc    Create recommendation resource
+ * @access  Authenticated users
+ */
+router.post('/recommendations', marketIntelligenceController.createRecommendation);
+
+/**
+ * @route   GET /api/market-intelligence/recommendations/:recommendationId
+ * @desc    Get recommendation resource
+ * @access  Scoped
+ */
+router.get('/recommendations/:recommendationId', marketIntelligenceController.getRecommendation);
+
+/**
+ * @route   PATCH /api/market-intelligence/recommendations/:recommendationId
+ * @desc    Update recommendation resource
+ * @access  Scoped owner/admin
+ */
+router.patch('/recommendations/:recommendationId', marketIntelligenceController.updateRecommendation);
+
+/**
+ * @route   DELETE /api/market-intelligence/recommendations/:recommendationId
+ * @desc    Delete recommendation resource
+ * @access  Scoped owner/admin
+ */
+router.delete('/recommendations/:recommendationId', marketIntelligenceController.deleteRecommendation);
+
+router.post('/recommendations/:recommendationId/approve', marketIntelligenceController.approveRecommendation);
+router.post('/recommendations/:recommendationId/publish', marketIntelligenceController.publishRecommendation);
+router.post('/recommendations/:recommendationId/retract', marketIntelligenceController.retractRecommendation);
+
+/**
+ * @route   GET /api/market-intelligence/data-sources
+ * @desc    List data source resources
+ * @access  Scoped users
+ */
+router.get('/data-sources', marketIntelligenceController.listDataSources);
+
+/**
+ * @route   POST /api/market-intelligence/data-sources
+ * @desc    Create data source
+ * @access  Authenticated users
+ */
+router.post('/data-sources', marketIntelligenceController.createDataSource);
+
+router.get('/data-sources/:sourceId', marketIntelligenceController.getDataSource);
+router.patch('/data-sources/:sourceId', marketIntelligenceController.updateDataSource);
+router.delete('/data-sources/:sourceId', marketIntelligenceController.deleteDataSource);
+router.post('/data-sources/:sourceId/refresh', marketIntelligenceController.refreshDataSource);
+
 export default router;

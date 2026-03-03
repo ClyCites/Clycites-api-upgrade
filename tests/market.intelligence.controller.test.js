@@ -61,6 +61,10 @@ describe('Market intelligence alert contracts', () => {
         isActive: false,
       },
       user: { id: '507f1f77bcf86cd799439011' },
+      query: {},
+      params: {},
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
     };
     const res = createResponseMock(req);
     const next = jest.fn();
@@ -79,7 +83,11 @@ describe('Market intelligence alert contracts', () => {
     );
     expect(res.statusCode).toBe(201);
     expect(res.payload.success).toBe(true);
-    expect(res.payload.data).toEqual(created);
+    expect(res.payload.data).toEqual(expect.objectContaining({
+      ...created,
+      status: 'new',
+      uiStatus: 'new',
+    }));
   });
 
   test('getUserAlerts supports status/active/product/region filters with pagination meta', async () => {
@@ -93,6 +101,10 @@ describe('Market intelligence alert contracts', () => {
         limit: '5',
       },
       user: { id: '507f1f77bcf86cd799439011' },
+      body: {},
+      params: {},
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
     };
     const res = createResponseMock(req);
     const next = jest.fn();
@@ -118,7 +130,12 @@ describe('Market intelligence alert contracts', () => {
       })
     );
     expect(res.payload.success).toBe(true);
-    expect(res.payload.data).toEqual(alerts);
+    expect(res.payload.data[0]).toEqual(expect.objectContaining({
+      _id: '507f1f77bcf86cd799439104',
+      active: false,
+      status: 'dismissed',
+      uiStatus: 'dismissed',
+    }));
     expect(res.payload.meta.pagination).toEqual({
       page: 2,
       limit: 5,
