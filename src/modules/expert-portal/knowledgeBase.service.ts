@@ -240,6 +240,31 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Delete an article (soft-delete as archive for workflow safety)
+   */
+  async deleteArticle(
+    articleId: string,
+    actorUserId: string,
+    actorRole: string
+  ): Promise<void> {
+    const article = await KnowledgeArticle.findById(articleId);
+    if (!article) throw new AppError('Article not found', 404);
+
+    const actorExpert = await ExpertProfile.findOne({ user: actorUserId }).select('_id');
+    const actorExpertId = actorExpert?._id?.toString();
+    const isPrivileged = ['platform_admin', 'admin', 'super_admin'].includes(actorRole);
+    const isOwner = actorExpertId === article.primaryAuthor.toString();
+
+    if (!isPrivileged && !isOwner) {
+      throw new AppError('You do not have permission to delete this article', 403);
+    }
+
+    article.status = PublicationStatus.ARCHIVED;
+    article.archivedAt = new Date();
+    await article.save();
+  }
+
+  /**
    * Search and list knowledge articles (public-facing)
    */
   async searchArticles(filters: SearchArticleDTO): Promise<{

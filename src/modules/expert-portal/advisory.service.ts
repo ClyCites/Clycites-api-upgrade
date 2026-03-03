@@ -495,8 +495,16 @@ export class AdvisoryService {
   /**
    * Record advisory acknowledgement
    */
-  async acknowledgeAdvisory(advisoryId: string): Promise<void> {
-    await Advisory.findByIdAndUpdate(advisoryId, { $inc: { acknowledgedCount: 1 } });
+  async acknowledgeAdvisory(advisoryId: string): Promise<IAdvisory> {
+    const advisory = await Advisory.findByIdAndUpdate(
+      advisoryId,
+      { $inc: { acknowledgedCount: 1 } },
+      { new: true }
+    );
+    if (!advisory) {
+      throw new AppError('Advisory not found', 404);
+    }
+    return advisory;
   }
 
   // -------------------------------------------------------------------------

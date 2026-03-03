@@ -16,6 +16,7 @@ import express from 'express';
 import { authenticate } from '../../common/middleware/auth';
 import { authorize } from '../../common/middleware/authorize';
 import { validate } from '../../common/middleware/validate';
+import ExpertWorkspaceController from './expertWorkspace.controller';
 
 import {
   // Expert identity
@@ -28,18 +29,15 @@ import {
   suspendExpert,
   getExpertDashboard,
   // Case review
-  listCases,
   getMyCases,
   getOutbreakCases,
-  assignCase,
-  startCaseReview,
-  submitCaseReview,
   escalateCase,
   submitAIFeedback,
   getAIFeedbackData,
   // Knowledge base
   createArticle,
   updateArticle,
+  deleteArticle,
   submitArticleForReview,
   reviewArticle,
   publishArticle,
@@ -199,7 +197,19 @@ router.get(
   '/cases',
   authenticate,
   authorize('expert', 'platform_admin'),
-  listCases
+  ExpertWorkspaceController.listCases
+);
+
+/**
+ * @route   POST /api/v1/expert-portal/cases
+ * @desc    Create a first-class field case
+ * @access  Private (expert, admin)
+ */
+router.post(
+  '/cases',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.createCase
 );
 
 /**
@@ -234,6 +244,42 @@ router.get(
 );
 
 /**
+ * @route   GET /api/v1/expert-portal/cases/:id
+ * @desc    Get case detail (workspace + legacy fallback)
+ * @access  Private (expert, admin)
+ */
+router.get(
+  '/cases/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.getCase
+);
+
+/**
+ * @route   PATCH /api/v1/expert-portal/cases/:id
+ * @desc    Update field case
+ * @access  Private (expert, admin)
+ */
+router.patch(
+  '/cases/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.updateCase
+);
+
+/**
+ * @route   DELETE /api/v1/expert-portal/cases/:id
+ * @desc    Delete field case
+ * @access  Private (expert, admin)
+ */
+router.delete(
+  '/cases/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.deleteCase
+);
+
+/**
  * @route   POST /api/v1/expert-portal/cases/:id/assign
  * @desc    Assign a case to an expert (admin)
  * @access  Private (admin)
@@ -242,7 +288,19 @@ router.post(
   '/cases/:id/assign',
   authenticate,
   authorize('platform_admin'),
-  assignCase
+  ExpertWorkspaceController.assignCase
+);
+
+/**
+ * @route   POST /api/v1/expert-portal/cases/:id/assign-self
+ * @desc    Self-assign a case to the current expert
+ * @access  Private (expert)
+ */
+router.post(
+  '/cases/:id/assign-self',
+  authenticate,
+  authorize('expert'),
+  ExpertWorkspaceController.assignSelfCase
 );
 
 /**
@@ -250,7 +308,7 @@ router.post(
  * @desc    Expert starts reviewing a case
  * @access  Private (expert)
  */
-router.post('/cases/:id/start', authenticate, authorize('expert'), startCaseReview);
+router.post('/cases/:id/start', authenticate, authorize('expert'), ExpertWorkspaceController.startCaseReview);
 
 /**
  * @route   POST /api/v1/expert-portal/cases/:id/submit
@@ -262,7 +320,19 @@ router.post(
   authenticate,
   authorize('expert'),
   validate(submitCaseReviewSchema),
-  submitCaseReview
+  ExpertWorkspaceController.submitCaseReview
+);
+
+/**
+ * @route   POST /api/v1/expert-portal/cases/:id/close
+ * @desc    Close a resolved case
+ * @access  Private (expert, admin)
+ */
+router.post(
+  '/cases/:id/close',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.closeCase
 );
 
 /**
@@ -289,6 +359,123 @@ router.post(
   authorize('expert', 'platform_admin'),
   validate(aiFeedbackSchema),
   submitAIFeedback
+);
+
+// ===========================================================================
+// ASSIGNMENTS  /assignments
+// ===========================================================================
+
+router.get(
+  '/assignments',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.listAssignments
+);
+
+router.get(
+  '/assignments/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.getAssignment
+);
+
+router.patch(
+  '/assignments/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.updateAssignment
+);
+
+// ===========================================================================
+// REVIEW QUEUE  /review-queue
+// ===========================================================================
+
+router.get(
+  '/review-queue',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.listReviewQueue
+);
+
+router.get(
+  '/review-queue/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.getReviewQueueItem
+);
+
+router.post(
+  '/review-queue/:id/approve',
+  authenticate,
+  authorize('platform_admin'),
+  ExpertWorkspaceController.approveReviewQueueItem
+);
+
+router.post(
+  '/review-queue/:id/reject',
+  authenticate,
+  authorize('platform_admin'),
+  ExpertWorkspaceController.rejectReviewQueueItem
+);
+
+// ===========================================================================
+// RESEARCH REPORTS  /research-reports
+// ===========================================================================
+
+router.get(
+  '/research-reports',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.listResearchReports
+);
+
+router.post(
+  '/research-reports',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.createResearchReport
+);
+
+router.get(
+  '/research-reports/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.getResearchReport
+);
+
+router.patch(
+  '/research-reports/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.updateResearchReport
+);
+
+router.delete(
+  '/research-reports/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.deleteResearchReport
+);
+
+router.post(
+  '/research-reports/:id/submit',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.submitResearchReport
+);
+
+router.post(
+  '/research-reports/:id/publish',
+  authenticate,
+  authorize('platform_admin'),
+  ExpertWorkspaceController.publishResearchReport
+);
+
+router.post(
+  '/research-reports/:id/archive',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  ExpertWorkspaceController.archiveResearchReport
 );
 
 // ===========================================================================
@@ -333,6 +520,18 @@ router.patch(
   authorize('expert', 'platform_admin'),
   validate(updateArticleSchema),
   updateArticle
+);
+
+/**
+ * @route   DELETE /api/v1/expert-portal/knowledge/:id
+ * @desc    Delete (archive) an article
+ * @access  Private (author or admin)
+ */
+router.delete(
+  '/knowledge/:id',
+  authenticate,
+  authorize('expert', 'platform_admin'),
+  deleteArticle
 );
 
 /**

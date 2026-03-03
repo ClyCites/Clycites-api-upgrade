@@ -49,6 +49,12 @@ All notable changes to this project are documented in this file.
   - price predictions resource CRUD + regenerate under `/api/v1/prices/predictions`
   - market intelligence recommendations CRUD/workflow (`approve|publish|retract`) under `/api/v1/market-intelligence/recommendations`
   - market intelligence data source CRUD + refresh under `/api/v1/market-intelligence/data-sources`
+- Expert workspace API coverage enhancements:
+  - field case first-class lifecycle under `/api/v1/expert-portal/cases` with detail/update/delete plus `assign-self` and `close` workflow actions
+  - dedicated assignments resource under `/api/v1/expert-portal/assignments`
+  - dedicated review queue resource under `/api/v1/expert-portal/review-queue` with approve/reject actions
+  - research report CRUD/workflow under `/api/v1/expert-portal/research-reports` (`submit|publish|archive`)
+  - knowledge article delete/archive endpoint under `/api/v1/expert-portal/knowledge/{id}`
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -73,6 +79,8 @@ All notable changes to this project are documented in this file.
 - Market intelligence alerts now expose deterministic signal status (`new|investigating|investigated|dismissed`) with backward-compatible `active/isActive` behavior.
 - Prices workspace status transitions are now validated server-side for estimations, predictions, recommendations, and data sources with explicit `400` errors for invalid transitions.
 - OpenAPI components and path docs now include prices workspace resource schemas/enums/examples for estimations, predictions, recommendations, market signals, and data sources.
+- Expert portal advisory, knowledge, and case responses now expose frontend-aligned `uiStatus` mappings (`advisories`, `knowledgeBaseArticles`, `fieldCases`) with explicit transition validation errors (`400`) on invalid workflow changes.
+- Expert workspace OpenAPI docs now include assignment/review-queue/research-report resources and explicit status transition semantics.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed
