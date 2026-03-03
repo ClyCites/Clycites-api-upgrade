@@ -55,6 +55,12 @@ All notable changes to this project are documented in this file.
   - dedicated review queue resource under `/api/v1/expert-portal/review-queue` with approve/reject actions
   - research report CRUD/workflow under `/api/v1/expert-portal/research-reports` (`submit|publish|archive`)
   - knowledge article delete/archive endpoint under `/api/v1/expert-portal/knowledge/{id}`
+- Analytics workspace API coverage enhancements:
+  - datasets lifecycle under `/api/v1/analytics/datasets` (`GET|POST|GET:{id}|PATCH:{id}|DELETE:{id}`) with registry compatibility and explicit status contract (`active|deprecated`)
+  - chart lifecycle status/workflow support under `/api/v1/analytics/charts` with publish/archive actions and deterministic `uiStatus` (`draft|published|archived`)
+  - dashboard lifecycle enhancements under `/api/v1/analytics/dashboards` with metadata patch, chart reorder endpoint, and publish/archive actions
+  - template first-class CRUD/workflow under `/api/v1/analytics/dashboards/templates` (`GET|POST|GET:{id}|PATCH:{id}|DELETE:{id}|publish|archive`)
+  - analytics-native reports resource under `/api/v1/analytics/reports` with CRUD + `generate/export` workflows (`generated|exported|archived`)
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -81,6 +87,9 @@ All notable changes to this project are documented in this file.
 - OpenAPI components and path docs now include prices workspace resource schemas/enums/examples for estimations, predictions, recommendations, market signals, and data sources.
 - Expert portal advisory, knowledge, and case responses now expose frontend-aligned `uiStatus` mappings (`advisories`, `knowledgeBaseArticles`, `fieldCases`) with explicit transition validation errors (`400`) on invalid workflow changes.
 - Expert workspace OpenAPI docs now include assignment/review-queue/research-report resources and explicit status transition semantics.
+- Analytics workspace list endpoints now consistently include `meta.pagination` and deterministic `uiStatus` mappings for datasets, charts, dashboards, templates, and reports.
+- Analytics status-sensitive mutations now enforce server-side transition rules with explicit `400` errors for invalid status transitions.
+- OpenAPI docs now include analytics workspace datasets/templates/reports paths and refreshed chart/dashboard status contract documentation.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed

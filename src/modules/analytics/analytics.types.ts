@@ -297,6 +297,7 @@ export interface IChartDocument {
   sharedWithRoles?: string[];
   sharedWithUsers?: Types.ObjectId[];
   tags:         string[];
+  status:       'draft' | 'published' | 'archived';
   isTemplate:   boolean;
   lastRunAt?:   Date;
   lastRunDurationMs?: number;
@@ -328,6 +329,7 @@ export interface IDashboardDocument {
   isTemplate:   boolean;
   templateCategory?: 'farmer' | 'organization' | 'expert' | 'admin' | 'outbreak' | 'market';
   tags:         string[];
+  status:       'draft' | 'published' | 'archived';
   isDefault:    boolean;         // pinned as default for owner/org
   createdAt:    Date;
   updatedAt:    Date;

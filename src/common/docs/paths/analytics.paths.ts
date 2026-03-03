@@ -1,14 +1,14 @@
-
 const auth = [{ BearerAuth: [] }];
 const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
 const idParam = { $ref: '#/components/parameters/mongoIdPath' };
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 const daysParam = { $ref: '#/components/parameters/daysParam' };
+const datasetIdParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'market_sales_daily' } };
 
 export const analyticsPaths: Record<string, unknown> = {
 
-  // ── Market Analytics (public) ───────────────────────────────────────────────
+  // ── Market Analytics (public) ────────────────────────────────────────────
 
   '/api/v1/analytics/overview': {
     get: {
@@ -68,20 +68,89 @@ export const analyticsPaths: Record<string, unknown> = {
     },
   },
 
-  // ── Semantic Query Engine ────────────────────────────────────────────────────
+  // ── Datasets ───────────────────────────────────────────────────────────────
 
   '/api/v1/analytics/datasets': {
     get: {
       tags: ['Analytics', 'Custom Charts'],
-      summary: 'List accessible datasets',
-      description: 'Returns the curated dataset registry filtered by the caller\'s access scope.',
+      summary: 'List datasets',
+      description: 'Lists custom datasets and compatible registry datasets with deterministic `status/uiStatus` and pagination metadata.',
       operationId: 'analyticsListDatasets',
       security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'deprecated'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['active', 'deprecated'] } },
+        { name: 'includeRegistry', in: 'query', schema: { type: 'boolean', default: true } },
+        { name: 'search', in: 'query', schema: { type: 'string' } },
+      ],
       responses: { 200: { description: 'Dataset definitions.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+    post: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Create custom dataset',
+      operationId: 'analyticsCreateDataset',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          orgId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          sourceDatasetId: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          fields: { type: 'array', items: { type: 'object' } },
+          metadata: { type: 'object', additionalProperties: true },
+          status: { type: 'string', enum: ['active', 'deprecated'], default: 'active' },
+        },
+      }),
+      responses: { 201: { description: 'Dataset created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
-  // ── Custom Charts ────────────────────────────────────────────────────────────
+  '/api/v1/analytics/datasets/{id}': {
+    get: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Get dataset',
+      operationId: 'analyticsGetDataset',
+      security: auth,
+      parameters: [datasetIdParam],
+      responses: { 200: { description: 'Dataset details.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/AnalyticsDataset' } } }] } } } }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Update custom dataset',
+      description: 'Supports status transition validation and returns `400` on invalid transitions.',
+      operationId: 'analyticsUpdateDataset',
+      security: auth,
+      parameters: [datasetIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          sourceDatasetId: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          fields: { type: 'array', items: { type: 'object' } },
+          metadata: { type: 'object', additionalProperties: true },
+          status: { type: 'string', enum: ['active', 'deprecated'] },
+        },
+      }),
+      responses: { 200: { description: 'Dataset updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Delete custom dataset',
+      operationId: 'analyticsDeleteDataset',
+      security: auth,
+      parameters: [datasetIdParam],
+      responses: { 200: { description: 'Dataset deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  // ── Custom Charts ─────────────────────────────────────────────────────────
 
   '/api/v1/analytics/charts/preview': {
     post: {
@@ -122,7 +191,14 @@ export const analyticsPaths: Record<string, unknown> = {
       summary: 'List saved charts',
       operationId: 'analyticsListCharts',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'dataset', in: 'query', schema: { type: 'string' } }, { name: 'tags', in: 'query', schema: { type: 'string' }, description: 'Comma-separated tag filter.' }],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'dataset', in: 'query', schema: { type: 'string' } },
+        { name: 'tags', in: 'query', schema: { type: 'string' }, description: 'Comma-separated tag filter.' },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } },
+      ],
       responses: { 200: { description: 'Charts with pagination.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
     post: {
@@ -131,7 +207,7 @@ export const analyticsPaths: Record<string, unknown> = {
       operationId: 'analyticsCreateChart',
       security: auth,
       requestBody: r({ type: 'object', required: ['name', 'definition'], properties: { name: { type: 'string' }, description: { type: 'string' }, definition: { $ref: '#/components/schemas/ChartDefinition' }, tags: { type: 'array', items: { type: 'string' } }, shareScope: { type: 'string', enum: ['owner_only', 'org_members', 'specific_roles', 'specific_users', 'public'] } } }),
-      responses: { 201: { description: 'Chart saved.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Chart' } } }] } } } }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      responses: { 201: { description: 'Chart saved.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
@@ -147,11 +223,12 @@ export const analyticsPaths: Record<string, unknown> = {
     put: {
       tags: ['Analytics', 'Custom Charts'],
       summary: 'Update chart (creates new version)',
+      description: 'Supports chart status transition validation and returns `400` on invalid transitions.',
       operationId: 'analyticsUpdateChart',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, definition: { $ref: '#/components/schemas/ChartDefinition' }, shareScope: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } } }),
-      responses: { 200: { description: 'Updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, definition: { $ref: '#/components/schemas/ChartDefinition' }, shareScope: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, status: { type: 'string', enum: ['draft', 'published', 'archived'] } } }),
+      responses: { 200: { description: 'Updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
     delete: {
       tags: ['Analytics', 'Custom Charts'],
@@ -160,6 +237,30 @@ export const analyticsPaths: Record<string, unknown> = {
       security: auth,
       parameters: [idParam],
       responses: { 200: { description: 'Deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/analytics/charts/{id}/publish': {
+    post: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Publish chart',
+      description: 'Status transition action from `draft` to `published`.',
+      operationId: 'analyticsPublishChart',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Chart published.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/analytics/charts/{id}/archive': {
+    post: {
+      tags: ['Analytics', 'Custom Charts'],
+      summary: 'Archive chart',
+      description: 'Status transition action to `archived`.',
+      operationId: 'analyticsArchiveChart',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Chart archived.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -176,25 +277,84 @@ export const analyticsPaths: Record<string, unknown> = {
     },
   },
 
-  // ── Dashboards ────────────────────────────────────────────────────────────────
+  // ── Dashboards ────────────────────────────────────────────────────────────
 
   '/api/v1/analytics/dashboards/templates': {
     get: {
       tags: ['Analytics', 'Dashboards'],
       summary: 'List dashboard templates',
       operationId: 'analyticsDashboardTemplates',
-      parameters: [{ name: 'category', in: 'query', schema: { type: 'string' } }],
+      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } }],
       responses: { 200: { description: 'Templates.' } },
+    },
+    post: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Create dashboard template',
+      operationId: 'analyticsCreateDashboardTemplate',
+      security: auth,
+      requestBody: r({ type: 'object', required: ['name'], properties: { name: { type: 'string' }, description: { type: 'string' }, shareScope: { type: 'string', enum: ['owner_only', 'org_members', 'specific_roles', 'specific_users', 'public'] }, templateCategory: { type: 'string', enum: ['farmer', 'organization', 'expert', 'admin', 'outbreak', 'market'] }, tags: { type: 'array', items: { type: 'string' } }, isDefault: { type: 'boolean' } } }),
+      responses: { 201: { description: 'Template created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/templates/{id}': {
+    get: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Get dashboard template',
+      operationId: 'analyticsGetDashboardTemplate',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Template details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Update dashboard template',
+      description: 'Supports template status transition validation and returns `400` on invalid transitions.',
+      operationId: 'analyticsUpdateDashboardTemplate',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, isDefault: { type: 'boolean' }, status: { type: 'string', enum: ['draft', 'published', 'archived'] } } }),
+      responses: { 200: { description: 'Template updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Delete dashboard template',
+      operationId: 'analyticsDeleteDashboardTemplate',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Template deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/templates/{id}/publish': {
+    post: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Publish dashboard template',
+      operationId: 'analyticsPublishDashboardTemplate',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Template published.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/templates/{id}/archive': {
+    post: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Archive dashboard template',
+      operationId: 'analyticsArchiveDashboardTemplate',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Template archived.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
   '/api/v1/analytics/dashboards': {
     get: {
       tags: ['Analytics', 'Dashboards'],
-      summary: 'List my dashboards',
+      summary: 'List dashboards',
       operationId: 'analyticsListDashboards',
       security: auth,
-      parameters: [pageParam, limitParam],
+      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } }, { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['draft', 'published', 'archived'] } }],
       responses: { 200: { description: 'Dashboards.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
     post: {
@@ -203,7 +363,7 @@ export const analyticsPaths: Record<string, unknown> = {
       operationId: 'analyticsCreateDashboard',
       security: auth,
       requestBody: r({ type: 'object', required: ['name'], properties: { name: { type: 'string' }, description: { type: 'string' }, shareScope: { type: 'string', enum: ['owner_only', 'org_members', 'specific_roles', 'specific_users', 'public'] }, tags: { type: 'array', items: { type: 'string' } }, isDefault: { type: 'boolean' } } }),
-      responses: { 201: { description: 'Dashboard created.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Dashboard' } } }] } } } }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+      responses: { 201: { description: 'Dashboard created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
@@ -216,6 +376,16 @@ export const analyticsPaths: Record<string, unknown> = {
       parameters: [idParam],
       responses: { 200: { description: 'Dashboard with populated charts.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Dashboard' } } }] } } } }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
+    patch: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Update dashboard metadata/layout',
+      description: 'Supports dashboard status transition validation and returns `400` on invalid transitions.',
+      operationId: 'analyticsUpdateDashboard',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, isDefault: { type: 'boolean' }, status: { type: 'string', enum: ['draft', 'published', 'archived'] } } }),
+      responses: { 200: { description: 'Dashboard updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
     delete: {
       tags: ['Analytics', 'Dashboards'],
       summary: 'Delete dashboard',
@@ -223,6 +393,28 @@ export const analyticsPaths: Record<string, unknown> = {
       security: auth,
       parameters: [idParam],
       responses: { 200: { description: 'Deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/{id}/publish': {
+    post: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Publish dashboard',
+      operationId: 'analyticsPublishDashboard',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Dashboard published.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/{id}/archive': {
+    post: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Archive dashboard',
+      operationId: 'analyticsArchiveDashboard',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Dashboard archived.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -235,6 +427,37 @@ export const analyticsPaths: Record<string, unknown> = {
       parameters: [idParam],
       requestBody: r({ type: 'object', required: ['chartId', 'position', 'size'], properties: { chartId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, position: { type: 'object', properties: { col: { type: 'integer', minimum: 0, maximum: 11 }, row: { type: 'integer', minimum: 0 } } }, size: { type: 'object', properties: { w: { type: 'integer', minimum: 1, maximum: 12 }, h: { type: 'integer', minimum: 1 } } } } }),
       responses: { 200: { description: 'Chart added.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/analytics/dashboards/{id}/charts/reorder': {
+    patch: {
+      tags: ['Analytics', 'Dashboards'],
+      summary: 'Reorder dashboard charts',
+      operationId: 'analyticsDashboardReorderCharts',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        required: ['items'],
+        properties: {
+          items: {
+            type: 'array',
+            minItems: 1,
+            items: {
+              type: 'object',
+              required: ['chartId', 'position', 'size'],
+              properties: {
+                chartId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+                position: { type: 'object', properties: { col: { type: 'integer', minimum: 0, maximum: 11 }, row: { type: 'integer', minimum: 0 } } },
+                size: { type: 'object', properties: { w: { type: 'integer', minimum: 1, maximum: 12 }, h: { type: 'integer', minimum: 1 } } },
+                title: { type: 'string' },
+              },
+            },
+          },
+        },
+      }),
+      responses: { 200: { description: 'Dashboard reordered.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -261,7 +484,107 @@ export const analyticsPaths: Record<string, unknown> = {
     },
   },
 
-  // ── Domain Dashboards ─────────────────────────────────────────────────────────
+  // ── Reports ───────────────────────────────────────────────────────────────
+
+  '/api/v1/analytics/reports': {
+    get: {
+      tags: ['Analytics'],
+      summary: 'List analytics reports',
+      operationId: 'analyticsListReports',
+      security: auth,
+      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['generated', 'exported', 'archived'] } }, { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['generated', 'exported', 'archived'] } }],
+      responses: { 200: { description: 'Reports list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+    post: {
+      tags: ['Analytics'],
+      summary: 'Create analytics report',
+      operationId: 'analyticsCreateReport',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          chartIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+          dashboardId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          datasetId: { type: 'string' },
+          outputFormat: { type: 'string', enum: ['csv', 'json'] },
+          filters: { type: 'object', additionalProperties: true },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: { 201: { description: 'Report created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/analytics/reports/{id}': {
+    get: {
+      tags: ['Analytics'],
+      summary: 'Get analytics report',
+      operationId: 'analyticsGetReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Report details.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/AnalyticsReport' } } }] } } } }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Analytics'],
+      summary: 'Update analytics report',
+      description: 'Supports report status transition validation and returns `400` on invalid transitions.',
+      operationId: 'analyticsUpdateReport',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          chartIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+          dashboardId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          datasetId: { type: 'string' },
+          outputFormat: { type: 'string', enum: ['csv', 'json'] },
+          filters: { type: 'object', additionalProperties: true },
+          metadata: { type: 'object', additionalProperties: true },
+          status: { type: 'string', enum: ['generated', 'exported', 'archived'] },
+        },
+      }),
+      responses: { 200: { description: 'Report updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Analytics'],
+      summary: 'Delete analytics report',
+      operationId: 'analyticsDeleteReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Report deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/analytics/reports/{id}/generate': {
+    post: {
+      tags: ['Analytics'],
+      summary: 'Generate analytics report',
+      operationId: 'analyticsGenerateReport',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { metadata: { type: 'object', additionalProperties: true } } }),
+      responses: { 200: { description: 'Report generated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/analytics/reports/{id}/export': {
+    post: {
+      tags: ['Analytics'],
+      summary: 'Export analytics report',
+      operationId: 'analyticsExportReport',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { format: { type: 'string', enum: ['csv', 'json'] }, metadata: { type: 'object', additionalProperties: true } } }),
+      responses: { 200: { description: 'Report exported.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  // ── Domain Dashboards ─────────────────────────────────────────────────────
 
   '/api/v1/analytics/farmer/dashboard': {
     get: {

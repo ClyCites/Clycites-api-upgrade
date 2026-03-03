@@ -61,12 +61,14 @@ const dashboardSchema = new Schema<IDashboardMongoDocument>(
       enum: ['farmer', 'organization', 'expert', 'admin', 'outbreak', 'market'],
     },
     tags:      [String],
+    status:    { type: String, enum: ['draft', 'published', 'archived'], default: 'draft', index: true },
     isDefault: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 dashboardSchema.index({ ownerId: 1, isDefault: 1 });
+dashboardSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
 dashboardSchema.index({ orgId: 1, 'sharing.scope': 1 });
 dashboardSchema.index({ isTemplate: 1, templateCategory: 1 });
 
