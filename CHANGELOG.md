@@ -39,6 +39,10 @@ All notable changes to this project are documented in this file.
     - invoices CRUD + export
     - credits CRUD + approve/reject/disburse workflows
     - insurance policies CRUD + claim lifecycle (`/insurance/policies/{policyId}/claims`, `/insurance/claims/{claimId}`)
+- Weather workspace API coverage enhancements:
+  - org-aware profile listing endpoint (`GET /api/v1/weather/profiles`) for station/workspace management
+  - profile-scoped forecast actions (`POST /api/v1/weather/profiles/{profileId}/forecast/refresh`, `GET /api/v1/weather/profiles/{profileId}/forecast/history`)
+  - alert rule test endpoint (`POST /api/v1/weather/rules/{id}/test`)
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -56,6 +60,10 @@ All notable changes to this project are documented in this file.
 - Escrow responses now include deterministic `uiStatus` mapping (`created|funded|released|refunded|closed`) and paginated list metadata.
 - Finance resource status transitions (payouts, invoices, credits, insurance policies/claims) now enforce server-side transition validation with explicit `400` errors on invalid transitions.
 - OpenAPI components and path docs now include finance workspace schemas/enums/examples and payout workflow endpoints.
+- Weather alerts now return canonical `uiStatus` (`new|acknowledged|escalated|resolved`) and include optional resolution metadata (`resolvedBy`, `resolvedAt`, `reason`) in dismiss/escalate workflows.
+- Weather rule payloads now expose deterministic lifecycle status (`draft|active|disabled`) with validated transition rules on mutation endpoints.
+- Weather workspace list endpoints now return response-envelope pagination metadata for profiles, forecast history, alerts, and rules.
+- OpenAPI docs now include weather workspace endpoint additions, query/body contracts, and explicit status/transition documentation.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed

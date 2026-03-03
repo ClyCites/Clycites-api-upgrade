@@ -75,6 +75,13 @@ router.get(
 );
 
 router.get(
+  '/profiles',
+  authenticate,
+  validate(validators.listProfilesValidator),
+  controller.listProfiles
+);
+
+router.get(
   '/profiles/:id',
   authenticate,
   validate(validators.profileIdValidator),
@@ -143,6 +150,20 @@ router.get(
   authenticate,
   validate([...validators.profileIdParamValidator, ...validators.forecastQueryValidator]),
   controller.getLatestForecast
+);
+
+router.post(
+  '/profiles/:profileId/forecast/refresh',
+  authenticate,
+  validate(validators.profileIdParamValidator),
+  controller.refreshForecast
+);
+
+router.get(
+  '/profiles/:profileId/forecast/history',
+  authenticate,
+  validate([...validators.profileIdParamValidator, ...validators.forecastHistoryValidator]),
+  controller.getForecastHistory
 );
 
 router.get(
@@ -222,7 +243,7 @@ router.get(
   '/org/:orgId/alerts',
   authenticate,
   authorize('platform_admin', 'trader'),
-  validate(validators.listAlertsValidator),
+  validate([...validators.orgIdParamValidator, ...validators.listAlertsValidator]),
   controller.getOrgAlerts
 );
 
@@ -249,6 +270,13 @@ router.post(
   authorize('platform_admin'),
   validate(validators.createRuleValidator),
   controller.createRule
+);
+
+router.post(
+  '/rules/:id/test',
+  authenticate,
+  validate(validators.testRuleValidator),
+  controller.testRule
 );
 
 router.get(

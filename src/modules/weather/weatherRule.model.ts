@@ -15,6 +15,7 @@ import {
   AlertType,
   AlertSeverity,
   RuleOperator,
+  RuleLifecycleStatus,
 } from './weather.types';
 
 const ruleConditionSchema = new Schema(
@@ -64,6 +65,12 @@ const weatherRuleSchema = new Schema<IWeatherRuleDocument>(
       type: Schema.Types.ObjectId,
       ref: 'Organization',
       default: null,
+      index: true,
+    },
+    workflowState: {
+      type: String,
+      enum: Object.values(RuleLifecycleStatus),
+      default: RuleLifecycleStatus.ACTIVE,
       index: true,
     },
     isActive:           { type: Boolean, default: true, index: true },

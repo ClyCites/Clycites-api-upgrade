@@ -1,4 +1,5 @@
 const mockAlertService = {
+  getAlert: jest.fn(),
   escalateAlert: jest.fn(),
   simulateAlert: jest.fn(),
 };
@@ -74,20 +75,36 @@ describe('Weather alerts escalation and simulation', () => {
     const req = {
       params: { id: '507f1f77bcf86cd799439081' },
       body: { reason: 'Flood risk worsening' },
-      user: { id: '507f1f77bcf86cd799439011', role: 'platform_admin' },
+      user: { id: '507f1f77bcf86cd799439011', role: 'platform_admin', orgId: '507f1f77bcf86cd799439012' },
     };
     const res = createResponseMock(req);
     const next = jest.fn();
-    const alert = { _id: req.params.id, severity: 'critical', status: 'new' };
+    const existing = {
+      _id: req.params.id,
+      farmerId: req.user.id,
+      organizationId: req.user.orgId,
+      severity: 'high',
+      status: 'new',
+      triggeredBy: 'system',
+    };
+    const alert = {
+      ...existing,
+      severity: 'critical',
+      status: 'sent',
+      triggeredBy: 'manual',
+    };
 
+    mockAlertService.getAlert.mockResolvedValue(existing);
     mockAlertService.escalateAlert.mockResolvedValue(alert);
 
     await controller.escalateAlert(req, res, next);
 
     expect(next).not.toHaveBeenCalled();
+    expect(mockAlertService.getAlert).toHaveBeenCalledTimes(1);
     expect(mockAlertService.escalateAlert).toHaveBeenCalledTimes(1);
     expect(res.payload.success).toBe(true);
-    expect(res.payload.data).toEqual(alert);
+    expect(res.payload.data.uiStatus).toBe('escalated');
+    expect(res.payload.data.reason).toBe('Flood risk worsening');
   });
 
   test('simulateAlert returns created alert payload', async () => {

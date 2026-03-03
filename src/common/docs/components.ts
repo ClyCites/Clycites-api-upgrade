@@ -1495,6 +1495,31 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
 
   // ── Weather ────────────────────────────────────────────────────────────────
 
+  WeatherProfile: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      farmId: mongoId,
+      farmerId: mongoId,
+      organizationId: mongoId,
+      farmName: { type: 'string' },
+      geoLocation: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['Point'] },
+          coordinates: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' } },
+        },
+      },
+      altitude: { type: 'number' },
+      timezone: { type: 'string' },
+      preferredUnits: { type: 'string', enum: ['metric', 'imperial'] },
+      primaryCropTypes: { type: 'array', items: { type: 'string' } },
+      isActive: { type: 'boolean' },
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
   WeatherSensorReading: {
     type: 'object',
     properties: {
@@ -1531,14 +1556,57 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
   WeatherAlert: {
     type: 'object',
     properties: {
-      id: mongoId,
-      alertType: { type: 'string', enum: ['drought', 'flood', 'frost', 'heatwave', 'storm', 'disease_risk'] },
-      severity: { type: 'string', enum: ['advisory', 'watch', 'warning', 'emergency'] },
-      region: { type: 'string' },
-      message: { type: 'string' },
-      startDate: isoDate,
-      endDate: isoDate,
+      _id: mongoId,
+      farmId: mongoId,
+      farmerId: mongoId,
+      organizationId: mongoId,
+      alertType: { type: 'string', enum: ['heavy_rain', 'drought_risk', 'heat_wave', 'frost', 'storm', 'strong_wind', 'flood_risk', 'high_humidity', 'low_humidity', 'uv_hazard', 'cold_snap', 'hail'] },
+      severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      status: { type: 'string', enum: ['new', 'sent', 'acknowledged', 'expired', 'dismissed'] },
+      uiStatus: { type: 'string', enum: ['new', 'acknowledged', 'escalated', 'resolved'] },
+      advisoryMessage: { type: 'string' },
+      recommendedActions: { type: 'array', items: { type: 'string' } },
+      triggeredBy: { type: 'string', enum: ['system', 'manual'] },
+      acknowledgedAt: isoDate,
+      acknowledgedBy: mongoId,
+      resolvedAt: isoDate,
+      resolvedBy: mongoId,
+      reason: { type: 'string' },
+      expiresAt: isoDate,
+      createdAt: isoDate,
+      updatedAt: isoDate,
+    },
+  },
+
+  WeatherRule: {
+    type: 'object',
+    properties: {
+      _id: mongoId,
+      organizationId: mongoId,
+      name: { type: 'string' },
+      description: { type: 'string' },
+      alertType: { type: 'string', enum: ['heavy_rain', 'drought_risk', 'heat_wave', 'frost', 'storm', 'strong_wind', 'flood_risk', 'high_humidity', 'low_humidity', 'uv_hazard', 'cold_snap', 'hail'] },
+      severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      conditions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            field: { type: 'string' },
+            operator: { type: 'string', enum: ['gt', 'gte', 'lt', 'lte', 'eq', 'between'] },
+            value: { type: 'number' },
+            valueTo: { type: 'number' },
+          },
+        },
+      },
+      advisoryTemplate: { type: 'string' },
+      recommendedActions: { type: 'array', items: { type: 'string' } },
+      priority: { type: 'number' },
       isActive: { type: 'boolean' },
+      status: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+      uiStatus: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+      createdAt: isoDate,
+      updatedAt: isoDate,
     },
   },
 

@@ -48,6 +48,14 @@ export enum AlertStatus {
   DISMISSED    = 'dismissed',
 }
 
+/** Frontend-aligned weather alert state */
+export enum AlertUiStatus {
+  NEW          = 'new',
+  ACKNOWLEDGED = 'acknowledged',
+  ESCALATED    = 'escalated',
+  RESOLVED     = 'resolved',
+}
+
 /** Forecast resolution */
 export enum ForecastHorizon {
   HOURLY = 'hourly',
@@ -69,6 +77,13 @@ export enum RuleOperator {
   LTE     = 'lte',
   EQ      = 'eq',
   BETWEEN = 'between',
+}
+
+/** Frontend-aligned weather rule state */
+export enum RuleLifecycleStatus {
+  DRAFT    = 'draft',
+  ACTIVE   = 'active',
+  DISABLED = 'disabled',
 }
 
 /** Supported external data sources */
@@ -285,6 +300,9 @@ export interface IWeatherAlert {
   deliveryAttempts: IDeliveryAttempt[];
   acknowledgedAt?: Date;
   acknowledgedBy?: Types.ObjectId;
+  resolvedAt?: Date;
+  resolvedBy?: Types.ObjectId;
+  resolutionReason?: string;
   expiresAt: Date;
   triggeredBy: 'system' | 'manual';
   triggeredByUserId?: Types.ObjectId; // only for manual triggers
@@ -317,6 +335,7 @@ export interface IWeatherRule {
   regions?: string[];              // ISO 3166 or custom region codes
   seasons?: string[];              // 'dry' | 'wet' | 'Q1' | etc.
   organizationId?: Types.ObjectId; // org-specific policy override; null = global
+  workflowState: RuleLifecycleStatus;
   isActive: boolean;
   priority: number;                // higher = evaluated first; used for dedup
   advisoryTemplate: string;        // e.g. 'Temperatures above {{value}}°C expected…'
@@ -400,6 +419,9 @@ export interface ICreateRuleInput {
   seasons?: string[];
   organizationId?: string;
   priority?: number;
+  status?: RuleLifecycleStatus;
+  uiStatus?: RuleLifecycleStatus;
+  active?: boolean;
   advisoryTemplate: string;
   recommendedActions: string[];
 }
@@ -412,7 +434,10 @@ export interface IUpdateRuleInput {
   cropTypes?: string[];
   regions?: string[];
   seasons?: string[];
+  status?: RuleLifecycleStatus;
+  uiStatus?: RuleLifecycleStatus;
   isActive?: boolean;
+  active?: boolean;
   priority?: number;
   advisoryTemplate?: string;
   recommendedActions?: string[];

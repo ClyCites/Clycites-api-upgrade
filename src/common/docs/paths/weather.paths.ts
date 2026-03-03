@@ -10,12 +10,47 @@ export const weatherPaths: Record<string, unknown> = {
   // ── Farm Weather Profiles ─────────────────────────────────────────────────────
 
   '/api/v1/weather/profiles': {
+    get: {
+      tags: ['Weather'],
+      summary: 'List weather profiles with org-aware scoping',
+      operationId: 'listWeatherProfiles',
+      security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'farmerId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'farmId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'search', in: 'query', schema: { type: 'string' } },
+        { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'updatedAt', 'farmName', 'timezone'] } },
+        { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+      ],
+      responses: {
+        200: { description: 'Profiles retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
     post: {
       tags: ['Weather'],
       summary: 'Create weather profile for a farm',
       operationId: 'createWeatherProfile',
       security: auth,
-      requestBody: r({ type: 'object', required: ['farmId', 'name', 'location'], properties: { farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, name: { type: 'string' }, location: { type: 'object', required: ['latitude', 'longitude'], properties: { latitude: { type: 'number' }, longitude: { type: 'number' }, altitude: { type: 'number' } } }, timezone: { type: 'string', example: 'Africa/Kampala' }, cropTypes: { type: 'array', items: { type: 'string' } } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['farmId', 'lat', 'lng'],
+        properties: {
+          farmId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          farmName: { type: 'string' },
+          lat: { type: 'number', minimum: -90, maximum: 90 },
+          lng: { type: 'number', minimum: -180, maximum: 180 },
+          altitude: { type: 'number' },
+          timezone: { type: 'string', example: 'Africa/Kampala' },
+          preferredUnits: { type: 'string', enum: ['metric', 'imperial'] },
+          primaryCropTypes: { type: 'array', items: { type: 'string' } },
+        },
+      }),
       responses: { 201: { description: 'Weather profile created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
@@ -46,7 +81,18 @@ export const weatherPaths: Record<string, unknown> = {
       operationId: 'updateWeatherProfile',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, cropTypes: { type: 'array', items: { type: 'string' } }, timezone: { type: 'string' } } }),
+      requestBody: r({
+        type: 'object',
+        properties: {
+          farmName: { type: 'string' },
+          lat: { type: 'number', minimum: -90, maximum: 90 },
+          lng: { type: 'number', minimum: -180, maximum: 180 },
+          altitude: { type: 'number' },
+          timezone: { type: 'string' },
+          preferredUnits: { type: 'string', enum: ['metric', 'imperial'] },
+          primaryCropTypes: { type: 'array', items: { type: 'string' } },
+        },
+      }),
       responses: { 200: { description: 'Updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
     delete: {
@@ -155,6 +201,43 @@ export const weatherPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/weather/profiles/{profileId}/forecast/refresh': {
+    post: {
+      tags: ['Weather'],
+      summary: 'Refresh forecast for a selected profile',
+      operationId: 'refreshProfileForecast',
+      security: auth,
+      parameters: [profileIdParam],
+      responses: {
+        200: { description: 'Forecast refresh triggered.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/weather/profiles/{profileId}/forecast/history': {
+    get: {
+      tags: ['Weather'],
+      summary: 'List historical forecast snapshots for a profile',
+      operationId: 'getForecastHistory',
+      security: auth,
+      parameters: [
+        profileIdParam,
+        pageParam,
+        limitParam,
+        { name: 'horizon', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'weekly'] } },
+        { name: 'includeSuperseded', in: 'query', schema: { type: 'boolean', default: true } },
+      ],
+      responses: {
+        200: { description: 'Forecast history retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
   '/api/v1/weather/profiles/{profileId}/forecast/summary': {
     get: {
       tags: ['Weather'],
@@ -208,7 +291,15 @@ export const weatherPaths: Record<string, unknown> = {
       summary: 'List alerts for a farm profile',
       operationId: 'listFarmAlerts',
       security: auth,
-      parameters: [profileIdParam, pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'acknowledged', 'dismissed', 'expired'] } }, { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } }],
+      parameters: [
+        profileIdParam,
+        pageParam,
+        limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['new', 'sent', 'acknowledged', 'dismissed', 'expired'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['new', 'acknowledged', 'escalated', 'resolved'] } },
+        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } },
+        { name: 'alertType', in: 'query', schema: { type: 'string', enum: ['heavy_rain', 'drought_risk', 'heat_wave', 'frost', 'storm', 'strong_wind', 'flood_risk', 'high_humidity', 'low_humidity', 'uv_hazard', 'cold_snap', 'hail'] } },
+      ],
       responses: { 200: { description: 'Farm alerts.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
@@ -249,9 +340,11 @@ export const weatherPaths: Record<string, unknown> = {
     post: {
       tags: ['Weather', 'Alerts'],
       summary: 'Dismiss a weather alert',
+      description: 'Transitions an alert to resolved state (`dismissed`) and returns resolution metadata (`resolvedBy`, `resolvedAt`, `reason`).',
       operationId: 'dismissWeatherAlert',
       security: auth,
       parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { reason: { type: 'string', maxLength: 1000 } } }),
       responses: { 200: { description: 'Alert dismissed.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
@@ -260,6 +353,7 @@ export const weatherPaths: Record<string, unknown> = {
     post: {
       tags: ['Weather', 'Alerts'],
       summary: 'Escalate a weather alert',
+      description: 'Escalation keeps alert open, sets manual trigger metadata, and returns frontend `uiStatus` mapping.',
       operationId: 'escalateWeatherAlert',
       security: auth,
       parameters: [idParam],
@@ -274,7 +368,14 @@ export const weatherPaths: Record<string, unknown> = {
       summary: 'List all alerts for an organization',
       operationId: 'getOrgAlerts',
       security: auth,
-      parameters: [{ name: 'orgId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }, pageParam, limitParam],
+      parameters: [
+        { name: 'orgId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        pageParam,
+        limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['new', 'sent', 'acknowledged', 'dismissed', 'expired'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['new', 'acknowledged', 'escalated', 'resolved'] } },
+        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } },
+      ],
       responses: { 200: { description: 'Org-wide alerts.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
@@ -284,10 +385,16 @@ export const weatherPaths: Record<string, unknown> = {
   '/api/v1/weather/rules': {
     get: {
       tags: ['Weather'],
-      summary: 'List active alert rules',
+      summary: 'List weather alert rules',
       operationId: 'listWeatherRules',
       security: auth,
-      parameters: [pageParam, limitParam],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'active', 'disabled', 'all'], default: 'active' } },
+        { name: 'severity', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] } },
+      ],
       responses: { 200: { description: 'Rules list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
     post: {
@@ -296,7 +403,37 @@ export const weatherPaths: Record<string, unknown> = {
       description: '`platform_admin` only.',
       operationId: 'createWeatherRule',
       security: auth,
-      requestBody: r({ type: 'object', required: ['name', 'condition', 'severity'], properties: { name: { type: 'string' }, condition: { type: 'object' }, severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] }, message: { type: 'string' } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['name', 'alertType', 'severity', 'conditions', 'advisoryTemplate'],
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          alertType: { type: 'string', enum: ['heavy_rain', 'drought_risk', 'heat_wave', 'frost', 'storm', 'strong_wind', 'flood_risk', 'high_humidity', 'low_humidity', 'uv_hazard', 'cold_snap', 'hail'] },
+          severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          conditions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['field', 'operator', 'value'],
+              properties: {
+                field: { type: 'string' },
+                operator: { type: 'string', enum: ['gt', 'gte', 'lt', 'lte', 'eq', 'between'] },
+                value: { type: 'number' },
+                valueTo: { type: 'number' },
+              },
+            },
+          },
+          cropTypes: { type: 'array', items: { type: 'string' } },
+          priority: { type: 'integer', minimum: 1, maximum: 100 },
+          advisoryTemplate: { type: 'string' },
+          recommendedActions: { type: 'array', items: { type: 'string' } },
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          status: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+          uiStatus: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+          active: { type: 'boolean' },
+        },
+      }),
       responses: { 201: { description: 'Rule created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
@@ -324,11 +461,37 @@ export const weatherPaths: Record<string, unknown> = {
     patch: {
       tags: ['Weather', 'Admin'],
       summary: 'Update alert rule',
-      description: '`platform_admin` only.',
+      description: '`platform_admin` only. Validates status transition rules (`draft -> active|disabled`, `active -> disabled`, `disabled -> active`).',
       operationId: 'updateWeatherRule',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, condition: { type: 'object' }, severity: { type: 'string' }, active: { type: 'boolean' } } }),
+      requestBody: r({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          description: { type: 'string' },
+          severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          conditions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                field: { type: 'string' },
+                operator: { type: 'string', enum: ['gt', 'gte', 'lt', 'lte', 'eq', 'between'] },
+                value: { type: 'number' },
+                valueTo: { type: 'number' },
+              },
+            },
+          },
+          advisoryTemplate: { type: 'string' },
+          recommendedActions: { type: 'array', items: { type: 'string' } },
+          isActive: { type: 'boolean' },
+          active: { type: 'boolean' },
+          status: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+          uiStatus: { type: 'string', enum: ['draft', 'active', 'disabled'] },
+          priority: { type: 'integer', minimum: 1, maximum: 100 },
+        },
+      }),
       responses: { 200: { description: 'Updated.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
     delete: {
@@ -339,6 +502,37 @@ export const weatherPaths: Record<string, unknown> = {
       security: auth,
       parameters: [idParam],
       responses: { 200: { description: 'Deleted (soft).' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/weather/rules/{id}/test': {
+    post: {
+      tags: ['Weather'],
+      summary: 'Test rule against provided reading or latest profile snapshot',
+      operationId: 'testWeatherRule',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          profileId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          reading: {
+            type: 'object',
+            properties: {
+              temperatureCelsius: { type: 'number' },
+              humidity: { type: 'number' },
+              rainfallMmPerHour: { type: 'number' },
+              windSpeedKph: { type: 'number' },
+              uvIndex: { type: 'number' },
+            },
+          },
+        },
+      }),
+      responses: {
+        200: { description: 'Rule evaluation completed.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
     },
   },
 

@@ -19,6 +19,7 @@ import auditService from '../audit/audit.service';
 import {
   IWeatherAlertDocument,
   AlertStatus,
+  AlertUiStatus,
   DeliveryChannel,
   DeliveryStatus,
   AlertSeverity,
@@ -33,12 +34,69 @@ import { AppError } from '../../common/errors/AppError';
 
 class WeatherAlertService {
 
+  private mapUiStatusToAlertStatuses(uiStatus: AlertUiStatus): AlertStatus[] {
+    switch (uiStatus) {
+      case AlertUiStatus.NEW:
+        return [AlertStatus.NEW, AlertStatus.SENT];
+      case AlertUiStatus.ACKNOWLEDGED:
+        return [AlertStatus.ACKNOWLEDGED];
+      case AlertUiStatus.ESCALATED:
+        return [AlertStatus.NEW, AlertStatus.SENT];
+      case AlertUiStatus.RESOLVED:
+        return [AlertStatus.DISMISSED, AlertStatus.EXPIRED];
+      default:
+        return [];
+    }
+  }
+
+  private applyStatusFilter(
+    filter: Record<string, unknown>,
+    status?: AlertStatus | AlertStatus[],
+    uiStatus?: AlertUiStatus
+  ): void {
+    if (status) {
+      const statuses = Array.isArray(status) ? status : [status];
+      filter.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+      return;
+    }
+
+    if (uiStatus) {
+      const statuses = this.mapUiStatusToAlertStatuses(uiStatus);
+      if (statuses.length === 1) {
+        filter.status = statuses[0];
+      } else if (statuses.length > 1) {
+        filter.status = { $in: statuses };
+      }
+
+      if (uiStatus === AlertUiStatus.ESCALATED) {
+        filter.triggeredBy = 'manual';
+      } else if (uiStatus === AlertUiStatus.NEW) {
+        filter.triggeredBy = { $ne: 'manual' };
+      }
+    }
+  }
+
+  private assertActionAllowed(
+    currentStatus: AlertStatus,
+    allowed: AlertStatus[],
+    action: string
+  ): void {
+    if (!allowed.includes(currentStatus)) {
+      throw new AppError(
+        `Invalid alert status transition for ${action}: ${currentStatus}`,
+        400,
+        'BAD_REQUEST'
+      );
+    }
+  }
+
   // ---- Alert List & Retrieval ----------------------------------------------
 
   async listAlerts(
     farmId: string,
     options: {
-      status?: AlertStatus;
+      status?: AlertStatus | AlertStatus[];
+      uiStatus?: AlertUiStatus;
       severity?: AlertSeverity;
       alertType?: AlertType;
       page?: number;
@@ -49,7 +107,7 @@ class WeatherAlertService {
       farmId: new mongoose.Types.ObjectId(farmId),
     };
 
-    if (options.status)    filter.status    = options.status;
+    this.applyStatusFilter(filter, options.status, options.uiStatus);
     if (options.severity)  filter.severity  = options.severity;
     if (options.alertType) filter.alertType = options.alertType;
 
@@ -68,7 +126,8 @@ class WeatherAlertService {
   async listOrgAlerts(
     organizationId: string,
     options: {
-      status?: AlertStatus;
+      status?: AlertStatus | AlertStatus[];
+      uiStatus?: AlertUiStatus;
       severity?: AlertSeverity;
       page?: number;
       limit?: number;
@@ -78,7 +137,7 @@ class WeatherAlertService {
       organizationId: new mongoose.Types.ObjectId(organizationId),
     };
 
-    if (options.status)   filter.status   = options.status;
+    this.applyStatusFilter(filter, options.status, options.uiStatus);
     if (options.severity) filter.severity = options.severity;
 
     const page  = options.page  ?? 1;
@@ -171,6 +230,11 @@ class WeatherAlertService {
 
   async acknowledgeAlert(alertId: string, userId: string): Promise<IWeatherAlertDocument> {
     const alert = await this.getAlert(alertId);
+    this.assertActionAllowed(
+      alert.status,
+      [AlertStatus.NEW, AlertStatus.SENT, AlertStatus.ACKNOWLEDGED],
+      'acknowledge'
+    );
 
     if (alert.status === AlertStatus.ACKNOWLEDGED) {
       return alert; // idempotent
@@ -193,9 +257,22 @@ class WeatherAlertService {
     return alert;
   }
 
-  async dismissAlert(alertId: string, userId: string): Promise<IWeatherAlertDocument> {
+  async dismissAlert(alertId: string, userId: string, reason?: string): Promise<IWeatherAlertDocument> {
     const alert = await this.getAlert(alertId);
+    this.assertActionAllowed(
+      alert.status,
+      [AlertStatus.NEW, AlertStatus.SENT, AlertStatus.ACKNOWLEDGED, AlertStatus.DISMISSED],
+      'dismiss'
+    );
+
+    if (alert.status === AlertStatus.DISMISSED) {
+      return alert; // idempotent
+    }
+
     alert.status = AlertStatus.DISMISSED;
+    alert.resolvedAt = new Date();
+    alert.resolvedBy = new mongoose.Types.ObjectId(userId);
+    alert.resolutionReason = reason ?? undefined;
     await alert.save();
 
     await auditService.log({
@@ -203,6 +280,11 @@ class WeatherAlertService {
       action:     'dismiss',
       resource:   'WeatherAlert',
       resourceId: alertId,
+      details: {
+        metadata: {
+          reason,
+        },
+      },
       status:     'success',
     });
 
@@ -216,10 +298,11 @@ class WeatherAlertService {
     severity?: AlertSeverity
   ): Promise<IWeatherAlertDocument> {
     const alert = await this.getAlert(alertId);
-
-    if (alert.status === AlertStatus.EXPIRED || alert.status === AlertStatus.DISMISSED) {
-      throw new AppError('Cannot escalate dismissed or expired alerts', 400);
-    }
+    this.assertActionAllowed(
+      alert.status,
+      [AlertStatus.NEW, AlertStatus.SENT, AlertStatus.ACKNOWLEDGED],
+      'escalate'
+    );
 
     const severityOrder: AlertSeverity[] = [
       AlertSeverity.LOW,
