@@ -295,6 +295,7 @@ class ApiTokenService {
       scopes: token.scopes,
       rateLimit: token.rateLimit,
       status: effectiveStatus,
+      uiStatus: effectiveStatus,
       expiresAt: token.expiresAt,
       allowedIps: token.allowedIps,
       lastUsedAt: token.lastUsedAt,

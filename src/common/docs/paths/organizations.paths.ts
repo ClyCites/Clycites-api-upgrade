@@ -1,40 +1,60 @@
 const auth = [{ BearerAuth: [] }];
-const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
+const r = (schema: object) => ({ required: true, content: { 'application/json': { schema } } });
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 const idParam = { $ref: '#/components/parameters/mongoIdPath' };
-const memberIdParam = { name: 'memberId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
+const memberIdParam = {
+  name: 'memberId',
+  in: 'path' as const,
+  required: true,
+  schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' },
+};
 
 export const organizationsPaths: Record<string, unknown> = {
-
   '/api/v1/organizations': {
     post: {
       tags: ['Organizations'],
-      summary: 'Create an organization',
-      description: 'Creates a new co-operative, agribusiness, or community group. The creator automatically becomes the organization admin.',
+      summary: 'Create organization',
       operationId: 'createOrganization',
       security: auth,
       requestBody: r({
         type: 'object',
-        required: ['name', 'type'],
+        required: ['name', 'type', 'industry', 'email', 'address'],
         properties: {
-          name: { type: 'string', example: 'Kampala Farmers Co-op' },
-          type: { type: 'string', enum: ['cooperative', 'agribusiness', 'ngo', 'government', 'community_group', 'other'] },
+          name: { type: 'string' },
+          slug: { type: 'string' },
+          type: { type: 'string', enum: ['enterprise', 'cooperative', 'government', 'individual'] },
+          industry: { type: 'string' },
           description: { type: 'string' },
-          registrationNumber: { type: 'string' },
-          country: { type: 'string', example: 'Uganda' },
-          region: { type: 'string' },
-          contactEmail: { type: 'string', format: 'email' },
-          contactPhone: { type: 'string' },
-          website: { type: 'string', format: 'uri' },
-          logo: { type: 'string', format: 'uri' },
+          email: { type: 'string', format: 'email' },
+          phone: { type: 'string' },
+          address: {
+            type: 'object',
+            required: ['city', 'state', 'country'],
+            properties: {
+              city: { type: 'string' },
+              state: { type: 'string' },
+              country: { type: 'string' },
+            },
+          },
         },
       }),
       responses: {
-        201: { description: 'Organization created.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Organization' } } }] } } } },
+        201: {
+          description: 'Organization created.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { $ref: '#/components/schemas/Organization' } } },
+                ],
+              },
+            },
+          },
+        },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
-        429: { description: 'Rate limit: max 3 organizations created per hour.' },
       },
     },
   },
@@ -42,12 +62,40 @@ export const organizationsPaths: Record<string, unknown> = {
   '/api/v1/organizations/me': {
     get: {
       tags: ['Organizations'],
-      summary: 'Get organizations I belong to',
+      summary: 'List current user organizations',
       operationId: 'getMyOrganizations',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'role', in: 'query', schema: { type: 'string', enum: ['admin', 'member', 'all'] } }],
       responses: {
-        200: { description: 'My organizations.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/Organization' } } } }] } } } },
+        200: {
+          description: 'Organizations for current user.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            organization: { $ref: '#/components/schemas/Organization' },
+                            role: { type: 'object', additionalProperties: true },
+                            joinedAt: { type: 'string', format: 'date-time' },
+                            department: { type: 'string' },
+                            title: { type: 'string' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
     },
@@ -56,13 +104,19 @@ export const organizationsPaths: Record<string, unknown> = {
   '/api/v1/organizations/invitations/accept': {
     post: {
       tags: ['Organizations'],
-      summary: 'Accept an organization invitation',
-      operationId: 'acceptOrgInvitation',
+      summary: 'Accept organization invitation',
+      operationId: 'acceptOrganizationInvitation',
       security: auth,
-      requestBody: r({ type: 'object', required: ['token'], properties: { token: { type: 'string', description: 'Invitation token received via email.' } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['token'],
+        properties: {
+          token: { type: 'string' },
+        },
+      }),
       responses: {
-        200: { description: 'Invitation accepted. You are now a member.' },
-        400: { description: 'Invalid or expired token.' },
+        200: { description: 'Invitation accepted.' },
+        400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
     },
@@ -71,13 +125,24 @@ export const organizationsPaths: Record<string, unknown> = {
   '/api/v1/organizations/{id}': {
     get: {
       tags: ['Organizations'],
-      summary: 'Get organization details',
-      description: 'Requires membership in the organization.',
+      summary: 'Get organization by ID',
       operationId: 'getOrganization',
       security: auth,
       parameters: [idParam],
       responses: {
-        200: { description: 'Organization.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Organization' } } }] } } } },
+        200: {
+          description: 'Organization details.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { $ref: '#/components/schemas/Organization' } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
         404: { $ref: '#/components/responses/NotFound' },
@@ -86,13 +151,74 @@ export const organizationsPaths: Record<string, unknown> = {
     patch: {
       tags: ['Organizations'],
       summary: 'Update organization',
-      description: 'Requires organization admin role.',
       operationId: 'updateOrganization',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, contactEmail: { type: 'string', format: 'email' }, contactPhone: { type: 'string' }, website: { type: 'string', format: 'uri' }, logo: { type: 'string', format: 'uri' } } }),
+      requestBody: r({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          industry: { type: 'string' },
+          description: { type: 'string' },
+          email: { type: 'string', format: 'email' },
+          phone: { type: 'string' },
+          website: { type: 'string', format: 'uri' },
+          status: { type: 'string', enum: ['active', 'pending', 'suspended', 'archived'] },
+        },
+      }),
       responses: {
-        200: { description: 'Updated.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { $ref: '#/components/schemas/Organization' } } }] } } } },
+        200: { description: 'Organization updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/organizations/{id}/disable': {
+    post: {
+      tags: ['Organizations'],
+      summary: 'Disable organization',
+      description: 'Sets organization status to suspended and returns `uiStatus=disabled`.',
+      operationId: 'disableOrganization',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        required: ['reason'],
+        properties: {
+          reason: { type: 'string', minLength: 3, maxLength: 1000 },
+        },
+      }),
+      responses: {
+        200: { description: 'Organization disabled.' },
+        400: { description: 'Invalid status transition.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/organizations/{id}/enable': {
+    post: {
+      tags: ['Organizations'],
+      summary: 'Enable organization',
+      description: 'Transitions organization to active and returns `uiStatus=active`.',
+      operationId: 'enableOrganization',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        required: ['reason'],
+        properties: {
+          reason: { type: 'string', minLength: 3, maxLength: 1000 },
+        },
+      }),
+      responses: {
+        200: { description: 'Organization enabled.' },
+        400: { description: 'Invalid status transition.' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
         404: { $ref: '#/components/responses/NotFound' },
@@ -104,32 +230,25 @@ export const organizationsPaths: Record<string, unknown> = {
     get: {
       tags: ['Organizations'],
       summary: 'List organization members',
-      description: 'Requires `members:read` permission.',
-      operationId: 'getOrgMembers',
+      operationId: 'listOrganizationMembers',
       security: auth,
-      parameters: [idParam, pageParam, limitParam, { name: 'role', in: 'query', schema: { type: 'string', enum: ['admin', 'member', 'viewer'] } }],
+      parameters: [
+        idParam,
+        pageParam,
+        limitParam,
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'invited', 'suspended', 'removed'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['active', 'disabled'] } },
+      ],
       responses: {
         200: {
-          description: 'Member list.',
+          description: 'Organization members.',
           content: {
             'application/json': {
               schema: {
-                type: 'object',
-                properties: {
-                  data: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        userId: { type: 'string' },
-                        name: { type: 'string' },
-                        email: { type: 'string' },
-                        role: { type: 'string' },
-                        joinedAt: { type: 'string', format: 'date-time' },
-                      },
-                    },
-                  },
-                },
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/OrganizationMember' } } } },
+                ],
               },
             },
           },
@@ -143,14 +262,22 @@ export const organizationsPaths: Record<string, unknown> = {
   '/api/v1/organizations/{id}/members/invite': {
     post: {
       tags: ['Organizations'],
-      summary: 'Invite a user to the organization',
-      description: 'Requires `members:invite` permission. Sends an invitation email.',
-      operationId: 'inviteOrgMember',
+      summary: 'Invite member',
+      operationId: 'inviteOrganizationMember',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', required: ['email', 'role'], properties: { email: { type: 'string', format: 'email' }, role: { type: 'string', enum: ['admin', 'member', 'viewer'] }, message: { type: 'string', description: 'Custom message to include in the invitation email.' } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['email', 'roleId'],
+        properties: {
+          email: { type: 'string', format: 'email' },
+          roleId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          department: { type: 'string' },
+          title: { type: 'string' },
+        },
+      }),
       responses: {
-        200: { description: 'Invitation sent.' },
+        200: { description: 'Member invited.' },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
@@ -161,11 +288,16 @@ export const organizationsPaths: Record<string, unknown> = {
   '/api/v1/organizations/{id}/members/{memberId}': {
     delete: {
       tags: ['Organizations'],
-      summary: 'Remove a member from the organization',
-      description: 'Requires `members:remove` permission.',
-      operationId: 'removeOrgMember',
+      summary: 'Remove member',
+      operationId: 'removeOrganizationMember',
       security: auth,
       parameters: [idParam, memberIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          reason: { type: 'string', maxLength: 1000 },
+        },
+      }),
       responses: {
         200: { description: 'Member removed.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -179,13 +311,69 @@ export const organizationsPaths: Record<string, unknown> = {
     patch: {
       tags: ['Organizations'],
       summary: 'Update member role',
-      description: 'Requires `members:update` permission.',
-      operationId: 'updateOrgMemberRole',
+      operationId: 'updateOrganizationMemberRole',
       security: auth,
       parameters: [idParam, memberIdParam],
-      requestBody: r({ type: 'object', required: ['role'], properties: { role: { type: 'string', enum: ['admin', 'member', 'viewer'] } } }),
+      requestBody: r({
+        type: 'object',
+        required: ['roleId'],
+        properties: {
+          roleId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+        },
+      }),
       responses: {
-        200: { description: 'Role updated.' },
+        200: { description: 'Member role updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/organizations/{id}/members/{memberId}/disable': {
+    post: {
+      tags: ['Organizations'],
+      summary: 'Disable organization member',
+      description: 'Transitions member status to suspended and sets `uiStatus=disabled`.',
+      operationId: 'disableOrganizationMember',
+      security: auth,
+      parameters: [idParam, memberIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['reason'],
+        properties: {
+          reason: { type: 'string', minLength: 3, maxLength: 1000 },
+        },
+      }),
+      responses: {
+        200: { description: 'Member disabled.' },
+        400: { description: 'Invalid member status transition.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/organizations/{id}/members/{memberId}/enable': {
+    post: {
+      tags: ['Organizations'],
+      summary: 'Enable organization member',
+      description: 'Transitions member status to active and sets `uiStatus=active`.',
+      operationId: 'enableOrganizationMember',
+      security: auth,
+      parameters: [idParam, memberIdParam],
+      requestBody: r({
+        type: 'object',
+        required: ['reason'],
+        properties: {
+          reason: { type: 'string', minLength: 3, maxLength: 1000 },
+        },
+      }),
+      responses: {
+        200: { description: 'Member enabled.' },
+        400: { description: 'Invalid member status transition.' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
         404: { $ref: '#/components/responses/NotFound' },

@@ -61,6 +61,13 @@ All notable changes to this project are documented in this file.
   - dashboard lifecycle enhancements under `/api/v1/analytics/dashboards` with metadata patch, chart reorder endpoint, and publish/archive actions
   - template first-class CRUD/workflow under `/api/v1/analytics/dashboards/templates` (`GET|POST|GET:{id}|PATCH:{id}|DELETE:{id}|publish|archive`)
   - analytics-native reports resource under `/api/v1/analytics/reports` with CRUD + `generate/export` workflows (`generated|exported|archived`)
+- Admin workspace API coverage enhancements:
+  - organization status lifecycle actions under `/api/v1/organizations/{id}/disable|enable` with deterministic `uiStatus` (`active|disabled`)
+  - member status lifecycle actions under `/api/v1/organizations/{id}/members/{memberId}/disable|enable` with deterministic `uiStatus` (`active|disabled`)
+  - admin organization listing under `/api/v1/admin/organizations` with role-aware scoping and pagination
+  - dedicated role management resource under `/api/v1/admin/roles` (`GET|POST|GET:{roleId}|PATCH:{roleId}|DELETE:{roleId}`)
+  - dedicated permissions catalog/governance resource under `/api/v1/admin/permissions` (`GET|POST|GET:{permissionId}|PATCH:{permissionId}|DELETE:{permissionId}`)
+  - workspace-level module toggle endpoints under `/api/v1/admin/system/feature-flags/{workspaceId}`
 - API token access logger middleware and token-aware authentication identity propagation.
 - Supertest integration suite validating token lifecycle, scope/org boundaries, revocation/rotation, usage, and rate limits.
 
@@ -90,6 +97,9 @@ All notable changes to this project are documented in this file.
 - Analytics workspace list endpoints now consistently include `meta.pagination` and deterministic `uiStatus` mappings for datasets, charts, dashboards, templates, and reports.
 - Analytics status-sensitive mutations now enforce server-side transition rules with explicit `400` errors for invalid status transitions.
 - OpenAPI docs now include analytics workspace datasets/templates/reports paths and refreshed chart/dashboard status contract documentation.
+- Organization/member lifecycle responses now include deterministic `uiStatus` mappings for admin workspace entity pages, and invalid enable/disable transitions return explicit `400` errors.
+- API token list/detail/workflow payloads now include canonical `uiStatus` alongside `status` (`active|revoked|expired`) to eliminate frontend fallback mapping.
+- OpenAPI docs now include admin workspace role/permission/organization/module-toggle endpoints and explicit status transition semantics for lifecycle actions.
 - Seed script updated to use `super_admin` bootstrap role.
 
 ### Fixed

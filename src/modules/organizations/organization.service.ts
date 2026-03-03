@@ -46,6 +46,44 @@ interface UserOrganization {
   title?: string;
 }
 
+export type OrganizationUiStatus = 'active' | 'disabled';
+export type OrganizationMemberUiStatus = 'active' | 'disabled';
+
+interface OrganizationMemberFilters {
+  status?: string;
+  uiStatus?: OrganizationMemberUiStatus;
+  page?: number;
+  limit?: number;
+}
+
+interface PaginatedOrganizationMembers {
+  members: IOrganizationMember[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+interface ListOrganizationsFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  uiStatus?: OrganizationUiStatus;
+  search?: string;
+}
+
+interface PaginatedOrganizations {
+  organizations: IOrganization[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 class OrganizationService {
   /**
    * Create a new organization
@@ -318,19 +356,37 @@ class OrganizationService {
   /**
    * Get organization members
    */
-  async getMembers(orgId: string, filters?: { status?: string }): Promise<IOrganizationMember[]> {
+  async getMembers(orgId: string, filters?: OrganizationMemberFilters): Promise<PaginatedOrganizationMembers> {
+    const page = Math.max(1, Number(filters?.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(filters?.limit || 20)));
+    const skip = (page - 1) * limit;
     const query: Record<string, unknown> = { organization: orgId };
 
     if (filters?.status) {
       query.status = filters.status;
+    } else if (filters?.uiStatus) {
+      query.status = { $in: this.mapUiStatusToMemberStatuses(filters.uiStatus) };
     }
 
-    const members = await OrganizationMember.find(query)
-      .populate('user', 'firstName lastName email profileImage')
-      .populate('role', 'name description')
-      .sort({ joinedAt: -1 });
+    const [members, total] = await Promise.all([
+      OrganizationMember.find(query)
+        .populate('user', 'firstName lastName email profileImage')
+        .populate('role', 'name description')
+        .sort({ joinedAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      OrganizationMember.countDocuments(query),
+    ]);
 
-    return members;
+    return {
+      members,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
   }
 
   /**
@@ -380,6 +436,144 @@ class OrganizationService {
         after: { status: 'removed', reason },
       },
     });
+  }
+
+  async setMemberStatus(
+    orgId: string,
+    memberId: string,
+    action: 'enable' | 'disable',
+    actedBy: string,
+    reason?: string
+  ): Promise<IOrganizationMember> {
+    const member = await OrganizationMember.findOne({
+      _id: memberId,
+      organization: orgId,
+    });
+
+    if (!member) {
+      throw new NotFoundError('Member not found');
+    }
+
+    const beforeState = member.toObject();
+    const currentStatus = member.status;
+
+    if (action === 'disable') {
+      if (currentStatus === 'removed') {
+        throw new BadRequestError('Cannot disable a removed member');
+      }
+
+      if (currentStatus === 'suspended') {
+        return member;
+      }
+
+      member.status = 'suspended';
+      member.suspendedBy = new Types.ObjectId(actedBy);
+      member.suspendedAt = new Date();
+      member.suspensionReason = reason;
+
+      if (currentStatus === 'active') {
+        await Organization.findByIdAndUpdate(orgId, {
+          $inc: { 'stats.memberCount': -1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      }
+    } else {
+      if (currentStatus === 'removed') {
+        throw new BadRequestError('Cannot enable a removed member');
+      }
+
+      if (currentStatus === 'invited') {
+        throw new BadRequestError('Cannot enable an invited member before invitation acceptance');
+      }
+
+      if (currentStatus === 'active') {
+        return member;
+      }
+
+      member.status = 'active';
+      member.suspendedBy = undefined;
+      member.suspendedAt = undefined;
+      member.suspensionReason = undefined;
+      if (!member.joinedAt) {
+        member.joinedAt = new Date();
+      }
+
+      if (currentStatus === 'suspended') {
+        await Organization.findByIdAndUpdate(orgId, {
+          $inc: { 'stats.memberCount': 1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      }
+    }
+
+    await member.save();
+
+    await AuditService.log({
+      action: `organization.member.${action}d`,
+      resource: 'organization_member',
+      resourceId: memberId,
+      userId: actedBy,
+      organizationId: orgId,
+      details: {
+        before: beforeState,
+        after: {
+          status: member.status,
+          reason,
+        },
+      },
+    });
+
+    return member;
+  }
+
+  async setOrganizationStatus(
+    orgId: string,
+    action: 'enable' | 'disable',
+    actedBy: string,
+    reason?: string
+  ): Promise<IOrganization> {
+    const organization = await this.getById(orgId);
+    const beforeState = organization.toObject();
+    const currentStatus = organization.status;
+
+    if (action === 'disable') {
+      if (currentStatus === 'suspended' || currentStatus === 'archived') {
+        return organization;
+      }
+
+      organization.status = 'suspended';
+      organization.suspendedAt = new Date();
+    } else {
+      if (currentStatus === 'active') {
+        return organization;
+      }
+
+      if (currentStatus === 'archived') {
+        throw new BadRequestError('Archived organizations cannot be re-enabled');
+      }
+
+      organization.status = 'active';
+      organization.suspendedAt = undefined;
+    }
+
+    await organization.save();
+
+    await AuditService.log({
+      action: `organization.${action}d`,
+      resource: 'organization',
+      resourceId: orgId,
+      userId: actedBy,
+      organizationId: orgId,
+      details: {
+        before: beforeState,
+        after: {
+          status: organization.status,
+          reason,
+        },
+      },
+    });
+
+    return organization;
   }
 
   /**
@@ -449,6 +643,63 @@ class OrganizationService {
       department: m.department,
       title: m.title,
     }));
+  }
+
+  async listOrganizations(filters?: ListOrganizationsFilters): Promise<PaginatedOrganizations> {
+    const page = Math.max(1, Number(filters?.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(filters?.limit || 20)));
+    const skip = (page - 1) * limit;
+    const query: Record<string, unknown> = {};
+
+    if (filters?.status) {
+      query.status = filters.status;
+    } else if (filters?.uiStatus) {
+      query.status = { $in: this.mapUiStatusToOrganizationStatuses(filters.uiStatus) };
+    }
+
+    if (filters?.search) {
+      const value = filters.search.trim();
+      if (value) {
+        query.$or = [
+          { name: { $regex: value, $options: 'i' } },
+          { slug: { $regex: value, $options: 'i' } },
+          { industry: { $regex: value, $options: 'i' } },
+        ];
+      }
+    }
+
+    const [organizations, total] = await Promise.all([
+      Organization.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Organization.countDocuments(query),
+    ]);
+
+    return {
+      organizations,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  toOrganizationUiStatus(status: IOrganization['status']): OrganizationUiStatus {
+    return status === 'active' ? 'active' : 'disabled';
+  }
+
+  toMemberUiStatus(status: IOrganizationMember['status']): OrganizationMemberUiStatus {
+    return status === 'active' ? 'active' : 'disabled';
+  }
+
+  private mapUiStatusToOrganizationStatuses(uiStatus: OrganizationUiStatus): IOrganization['status'][] {
+    if (uiStatus === 'active') return ['active'];
+    return ['pending', 'suspended', 'archived'];
+  }
+
+  private mapUiStatusToMemberStatuses(uiStatus: OrganizationMemberUiStatus): IOrganizationMember['status'][] {
+    if (uiStatus === 'active') return ['active'];
+    return ['invited', 'suspended', 'removed'];
   }
 
   /**

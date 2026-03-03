@@ -317,7 +317,9 @@ describe('API token integration', () => {
     app.use(apiTokenAccessLogger);
 
     app.post('/api/v1/auth/tokens', attachAdminSession, validate(validators.createApiTokenValidator), authController.createApiToken);
+    app.get('/api/v1/auth/tokens', attachAdminSession, validate(validators.listApiTokensValidator), authController.listApiTokens);
     app.get('/api/v1/auth/tokens/:id', attachAdminSession, validate(validators.tokenIdParamValidator), authController.getApiTokenById);
+    app.patch('/api/v1/auth/tokens/:id', attachAdminSession, validate(validators.updateApiTokenValidator), authController.updateApiToken);
     app.post('/api/v1/auth/tokens/:id/rotate', attachAdminSession, validate(validators.rotateOrRevokeApiTokenValidator), authController.rotateApiToken);
     app.post('/api/v1/auth/tokens/:id/revoke', attachAdminSession, validate(validators.rotateOrRevokeApiTokenValidator), authController.revokeApiToken);
     app.get('/api/v1/auth/tokens/:id/usage', attachAdminSession, validate(validators.tokenIdParamValidator), authController.getApiTokenUsage);
@@ -348,6 +350,7 @@ describe('API token integration', () => {
     expect(createRes.body.success).toBe(true);
     expect(createRes.body.data.secret).toBeDefined();
     expect(createRes.body.data.secretShown).toBe(true);
+    expect(createRes.body.data.token.uiStatus).toBe('active');
 
     const tokenDocId = createRes.body.data.token.id;
 
@@ -357,6 +360,37 @@ describe('API token integration', () => {
 
     expect(getRes.body.data.secret).toBeUndefined();
     expect(getRes.body.data.tokenHash).toBeUndefined();
+    expect(getRes.body.data.uiStatus).toBe('active');
+  });
+
+  test('supports list and update while preserving status/uiStatus contract', async () => {
+    const createRes = await request(app)
+      .post('/api/v1/auth/tokens')
+      .send({
+        name: 'Updatable Token',
+        scopes: ['orders:read'],
+      })
+      .expect(201);
+
+    const tokenId = createRes.body.data.token.id;
+
+    const updateRes = await request(app)
+      .patch(`/api/v1/auth/tokens/${tokenId}`)
+      .send({
+        name: 'Updated Token Name',
+        reason: 'Name cleanup',
+      })
+      .expect(200);
+
+    expect(updateRes.body.data.name).toBe('Updated Token Name');
+    expect(updateRes.body.data.uiStatus).toBe('active');
+
+    const listRes = await request(app)
+      .get('/api/v1/auth/tokens')
+      .expect(200);
+
+    expect(Array.isArray(listRes.body.data)).toBe(true);
+    expect(listRes.body.data[0].uiStatus).toBe('active');
   });
 
   test('enforces scope and organization boundary for API token auth', async () => {
@@ -436,6 +470,7 @@ describe('API token integration', () => {
     const newSecret = rotateRes.body.data.secret;
     expect(newSecret).toBeDefined();
     expect(newSecret).not.toBe(oldSecret);
+    expect(rotateRes.body.data.token.uiStatus).toBe('active');
 
     await request(app)
       .get('/api/v1/orders')
@@ -447,10 +482,11 @@ describe('API token integration', () => {
       .set('Authorization', `Bearer ${newSecret}`)
       .expect(200);
 
-    await request(app)
+    const revokeRes = await request(app)
       .post(`/api/v1/auth/tokens/${tokenId}/revoke`)
       .send({ reason: 'Compromised integration endpoint' })
       .expect(200);
+    expect(revokeRes.body.data.uiStatus).toBe('revoked');
 
     await request(app)
       .get('/api/v1/orders')
@@ -479,6 +515,7 @@ describe('API token integration', () => {
 
     expect(usageRes.body.data.summary.totalRequests).toBeGreaterThanOrEqual(2);
     expect(Array.isArray(usageRes.body.data.requestsByDay)).toBe(true);
+    expect(usageRes.body.data.token.uiStatus).toBe('active');
   });
 
   test('writes audit events for token lifecycle actions', async () => {

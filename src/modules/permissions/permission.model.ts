@@ -4,6 +4,7 @@ export interface IPermission extends Document {
   resource: string; // e.g., 'users', 'products', 'orders'
   action: string; // e.g., 'create', 'read', 'update', 'delete'
   scope: 'global' | 'organization' | 'own'; // Scope of permission
+  status: 'active' | 'deprecated';
   
   name: string; // Full permission name: resource:action:scope (e.g., users:create:organization)
   description: string;
@@ -53,6 +54,12 @@ const PermissionSchema = new Schema<IPermission>(
       type: Boolean,
       default: false,
     },
+    status: {
+      type: String,
+      enum: ['active', 'deprecated'],
+      default: 'active',
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -64,6 +71,7 @@ PermissionSchema.index({ name: 1 }, { unique: true });
 PermissionSchema.index({ resource: 1, action: 1, scope: 1 });
 PermissionSchema.index({ category: 1 });
 PermissionSchema.index({ isSystem: 1 });
+PermissionSchema.index({ status: 1 });
 
 // Pre-save hook to generate permission name
 PermissionSchema.pre('save', function (next) {
