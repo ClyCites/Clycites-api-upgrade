@@ -33,8 +33,8 @@ const toPositiveInt = (value: unknown, fallback: number, max?: number): number =
 };
 
 const toPlainObject = <T>(value: T): T => {
-  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
-    return (value as { toObject: () => T }).toObject();
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
   }
   return value;
 };
@@ -152,7 +152,7 @@ export class PriceController {
       const payload = {
         ...result,
         price: result && typeof result === 'object' && 'price' in result && result.price
-          ? withMarketPriceStatus(result.price as AnyRecord)
+          ? withMarketPriceStatus(result.price as unknown as AnyRecord)
           : result,
       };
       ResponseHandler.created(res, payload, result.message || 'Price added successfully');
@@ -207,7 +207,7 @@ export class PriceController {
       const payload = {
         ...result,
         price: result && typeof result === 'object' && 'price' in result && result.price
-          ? withMarketPriceStatus(result.price as AnyRecord)
+          ? withMarketPriceStatus(result.price as unknown as AnyRecord)
           : result,
       };
       ResponseHandler.success(res, payload, 'Price updated successfully');

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import PriceMonitorService from './priceMonitor.service';
 import { ResponseHandler } from '../../common/utils/response';
 import { AppError, ForbiddenError } from '../../common/errors/AppError';
@@ -27,8 +28,8 @@ const toOrgId = (value: unknown): string | undefined => {
 };
 
 const toPlainObject = <T>(value: T): T => {
-  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
-    return (value as { toObject: () => T }).toObject();
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
   }
   return value;
 };
@@ -40,6 +41,8 @@ const withUiStatus = <T extends AnyRecord>(entity: T): T & { uiStatus: unknown }
     uiStatus: plain.status,
   };
 };
+
+const toObjectIdValue = (value: string): mongoose.Types.ObjectId => new mongoose.Types.ObjectId(value);
 
 export class PriceMonitorController {
   private priceMonitorService: PriceMonitorService;
@@ -241,7 +244,7 @@ export class PriceMonitorController {
         if (nextStatus === 'submitted' && !estimation.submittedAt) estimation.submittedAt = new Date();
         if (nextStatus === 'approved' && !estimation.approvedAt) {
           estimation.approvedAt = new Date();
-          estimation.approvedBy = this.getUserId(req);
+          estimation.approvedBy = toObjectIdValue(this.getUserId(req));
         }
       }
 

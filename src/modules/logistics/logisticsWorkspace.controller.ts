@@ -145,18 +145,18 @@ const buildPagination = (page: number, limit: number, total: number) => {
 };
 
 const toPlainObject = <T>(value: T): T => {
-  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
-    return (value as { toObject: () => T }).toObject();
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
   }
   return value;
 };
 
-const withUiStatus = <T extends Record<string, unknown>>(entity: T): T & { uiStatus: unknown } => {
-  const plain = toPlainObject(entity);
+const withUiStatus = <T>(entity: T): T & { uiStatus: unknown } => {
+  const plain = toPlainObject(entity) as unknown as Record<string, unknown>;
   return {
-    ...plain,
+    ...(plain as object),
     uiStatus: plain.status,
-  };
+  } as T & { uiStatus: unknown };
 };
 
 const assertTransition = <T extends string>(
@@ -950,7 +950,7 @@ class LogisticsWorkspaceController {
       if (typeof req.body.shipmentId === 'string') filter.shipmentId = req.body.shipmentId;
 
       const logs = await LogisticsColdChainLog.find(filter).sort({ capturedAt: -1 });
-      const flagged: Array<Record<string, unknown>> = [];
+      const flagged: Array<unknown> = [];
 
       for (const log of logs) {
         const shouldFlag = log.temperatureC > log.thresholdC;

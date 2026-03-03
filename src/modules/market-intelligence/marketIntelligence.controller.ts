@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { marketIntelligenceService } from './marketIntelligence.service';
 import { AppError, ForbiddenError } from '../../common/errors/AppError';
 import PriceAlert from './priceAlert.model';
@@ -195,10 +196,14 @@ class MarketIntelligenceController {
   }
 
   private toPlainObject<T>(value: T): T {
-    if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
-      return (value as { toObject: () => T }).toObject();
+    if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+      return (value as unknown as { toObject: () => T }).toObject();
     }
     return value;
+  }
+
+  private toObjectId(value: string): mongoose.Types.ObjectId {
+    return new mongoose.Types.ObjectId(value);
   }
 
   private resolveAlertStatus(alert: AnyRecord): AlertUiStatus {
@@ -693,7 +698,7 @@ class MarketIntelligenceController {
         recommendation.status = nextStatus;
         if (nextStatus === 'approved' && !recommendation.approvedAt) {
           recommendation.approvedAt = new Date();
-          recommendation.approvedBy = this.getUserId(req);
+          recommendation.approvedBy = this.toObjectId(this.getUserId(req));
         }
         if (nextStatus === 'published' && !recommendation.publishedAt) recommendation.publishedAt = new Date();
         if (nextStatus === 'retracted' && !recommendation.retractedAt) recommendation.retractedAt = new Date();
@@ -746,7 +751,7 @@ class MarketIntelligenceController {
 
       recommendation.status = 'approved';
       recommendation.approvedAt = new Date();
-      recommendation.approvedBy = this.getUserId(req);
+      recommendation.approvedBy = this.toObjectId(this.getUserId(req));
       await recommendation.save();
 
       sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation approved');

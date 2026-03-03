@@ -43,31 +43,7 @@ export interface JwtPayload {
   [key: string]: unknown;
 }
 
-export interface AuthRequest extends Request {
-  user?: JwtPayload;
-  device?: AuthDevice;
-  requestId?: string;
-  apiToken?: {
-    id: string;
-    tokenId: string;
-    tokenType: ApiTokenType;
-    tokenPrefix: string;
-    scopes: string[];
-    orgId?: string;
-    rateLimit: IApiTokenRateLimit;
-  };
-  impersonation?: {
-    sessionId: string;
-    actorId: string;
-    reason: string;
-    expiresAt?: string;
-  };
-  superAdminGrant?: {
-    grantId: string;
-    scopes: string[];
-    expiresAt: string;
-  };
-}
+export type AuthRequest = Request;
 
 const isJwtLikeToken = (token: string): boolean => token.split('.').length === 3;
 

@@ -167,8 +167,8 @@ const buildPagination = (page: number, limit: number, total: number) => {
 };
 
 const toPlainObject = <T>(value: T): T => {
-  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
-    return (value as { toObject: () => T }).toObject();
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
   }
   return value;
 };

@@ -26,6 +26,9 @@ const toPlainObject = <T extends Record<string, unknown>>(value: T): T => {
   return value;
 };
 
+const toOptionalNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' ? value : undefined;
+
 // ============================================================================
 // EXPERT IDENTITY
 // ============================================================================
@@ -750,7 +753,7 @@ export const createAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Advisory created',
       201
@@ -802,7 +805,7 @@ export const issueEmergencyAlert = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Emergency alert issued',
       201
@@ -925,7 +928,7 @@ export const acknowledgeAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Advisory acknowledged'
     );
@@ -950,7 +953,7 @@ export const getAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Advisory retrieved'
     );
@@ -980,7 +983,7 @@ export const updateAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Advisory updated'
     );
@@ -1022,7 +1025,7 @@ export const submitAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       'Advisory submitted for review'
     );
@@ -1053,7 +1056,7 @@ export const reviewAdvisory = async (
       res,
       {
         ...plain,
-        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
       },
       decision === 'approved' ? 'Advisory approved' : 'Advisory rejected'
     );
