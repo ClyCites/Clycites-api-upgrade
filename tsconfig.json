@@ -29,6 +29,9 @@
       "@utils/*": ["common/utils/*"]
     }
   },
+  "ts-node": {
+    "files": true
+  },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts"]
 }
