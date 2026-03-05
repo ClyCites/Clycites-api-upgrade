@@ -217,7 +217,7 @@ router.post(
  * @desc    Get cases assigned to current expert
  * @access  Private (expert)
  */
-router.get('/cases/my', authenticate, authorize('expert'), getMyCases);
+router.get('/cases/my', authenticate, authorize('expert', 'platform_admin'), getMyCases);
 
 /**
  * @route   GET /api/v1/expert-portal/cases/outbreaks
@@ -299,7 +299,7 @@ router.post(
 router.post(
   '/cases/:id/assign-self',
   authenticate,
-  authorize('expert'),
+  authorize('expert', 'platform_admin'),
   ExpertWorkspaceController.assignSelfCase
 );
 
@@ -308,7 +308,7 @@ router.post(
  * @desc    Expert starts reviewing a case
  * @access  Private (expert)
  */
-router.post('/cases/:id/start', authenticate, authorize('expert'), ExpertWorkspaceController.startCaseReview);
+router.post('/cases/:id/start', authenticate, authorize('expert', 'platform_admin'), ExpertWorkspaceController.startCaseReview);
 
 /**
  * @route   POST /api/v1/expert-portal/cases/:id/submit
@@ -318,7 +318,7 @@ router.post('/cases/:id/start', authenticate, authorize('expert'), ExpertWorkspa
 router.post(
   '/cases/:id/submit',
   authenticate,
-  authorize('expert'),
+  authorize('expert', 'platform_admin'),
   validate(submitCaseReviewSchema),
   ExpertWorkspaceController.submitCaseReview
 );
@@ -343,7 +343,7 @@ router.post(
 router.post(
   '/cases/:id/escalate',
   authenticate,
-  authorize('expert'),
+  authorize('expert', 'platform_admin'),
   validate(escalateCaseSchema),
   escalateCase
 );
@@ -736,7 +736,7 @@ router.post('/advisories/:id/acknowledge', authenticate, acknowledgeAdvisory);
 router.post(
   '/inquiries',
   authenticate,
-  authorize('farmer'),
+  authorize('farmer', 'platform_admin'),
   validate(createInquirySchema),
   createInquiry
 );
@@ -746,7 +746,7 @@ router.post(
  * @desc    Get farmer's own inquiries
  * @access  Private (farmer)
  */
-router.get('/inquiries/my', authenticate, authorize('farmer'), getMyInquiries);
+router.get('/inquiries/my', authenticate, authorize('farmer', 'platform_admin'), getMyInquiries);
 
 /**
  * @route   GET /api/v1/expert-portal/inquiries/assigned
@@ -756,7 +756,7 @@ router.get('/inquiries/my', authenticate, authorize('farmer'), getMyInquiries);
 router.get(
   '/inquiries/assigned',
   authenticate,
-  authorize('expert'),
+  authorize('expert', 'platform_admin'),
   getAssignedInquiries
 );
 
