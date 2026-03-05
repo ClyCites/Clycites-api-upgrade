@@ -2,6 +2,7 @@ import OAuthProvider from './oauthProvider.model';
 import LinkedAccount from './linkedAccount.model';
 import User from '../users/user.model';
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
+import OrganizationService from '../organizations/organization.service';
 import { AuditService } from '../audit';
 import {
   NotFoundError,
@@ -130,6 +131,8 @@ class OAuthService {
 
       isNewUser = true;
     }
+
+    await OrganizationService.ensureDefaultOrganizationMembership(user._id.toString());
 
     // Create or update linked account
     await LinkedAccount.findOneAndUpdate(

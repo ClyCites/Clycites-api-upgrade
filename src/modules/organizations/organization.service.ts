@@ -84,6 +84,21 @@ interface PaginatedOrganizations {
   };
 }
 
+interface EnsureDefaultOrganizationMembershipResult {
+  organization: IOrganization;
+  member: IOrganizationMember;
+}
+
+const DEFAULT_ORGANIZATION_SLUG = 'clycites';
+const DEFAULT_ORGANIZATION_NAME = 'ClyCites';
+const DEFAULT_ORGANIZATION_INDUSTRY = 'Agriculture Technology';
+const DEFAULT_ORGANIZATION_EMAIL = 'ops@clycites.com';
+const DEFAULT_ORGANIZATION_ADDRESS = {
+  city: 'Kampala',
+  state: 'Central',
+  country: 'Uganda',
+};
+
 class OrganizationService {
   /**
    * Create a new organization
@@ -645,6 +660,75 @@ class OrganizationService {
     }));
   }
 
+  async ensureDefaultOrganizationMembership(
+    userId: string
+  ): Promise<EnsureDefaultOrganizationMembershipResult> {
+    const user = await User.findOne({ _id: userId, deletedAt: null }).select('_id');
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    const organization = await this.ensureDefaultOrganization(userId);
+    const role = await this.resolveDefaultMemberRole(organization._id.toString());
+
+    let member = await OrganizationMember.findOne({
+      organization: organization._id,
+      user: user._id,
+    });
+
+    if (!member) {
+      try {
+        member = await OrganizationMember.create({
+          organization: organization._id,
+          user: user._id,
+          role: role._id,
+          status: 'active',
+          joinedAt: new Date(),
+        });
+
+        await Organization.findByIdAndUpdate(organization._id, {
+          $inc: { 'stats.memberCount': 1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      } catch (error) {
+        if (!this.isDuplicateKeyError(error)) {
+          throw error;
+        }
+
+        member = await OrganizationMember.findOne({
+          organization: organization._id,
+          user: user._id,
+        });
+      }
+    }
+
+    if (!member) {
+      throw new NotFoundError('Organization membership could not be resolved');
+    }
+
+    if (member.status !== 'active') {
+      member.status = 'active';
+      member.role = role._id;
+      member.joinedAt = member.joinedAt || new Date();
+      member.invitationToken = undefined;
+      member.invitationExpiresAt = undefined;
+      member.suspendedBy = undefined;
+      member.suspendedAt = undefined;
+      member.suspensionReason = undefined;
+      member.removedBy = undefined;
+      member.removedAt = undefined;
+      member.removalReason = undefined;
+      await member.save();
+
+      await Organization.findByIdAndUpdate(organization._id, {
+        $inc: { 'stats.memberCount': 1 },
+        'stats.lastActivityAt': new Date(),
+      });
+    }
+
+    return { organization, member };
+  }
+
   async listOrganizations(filters?: ListOrganizationsFilters): Promise<PaginatedOrganizations> {
     const page = Math.max(1, Number(filters?.page || 1));
     const limit = Math.max(1, Math.min(100, Number(filters?.limit || 20)));
@@ -700,6 +784,123 @@ class OrganizationService {
   private mapUiStatusToMemberStatuses(uiStatus: OrganizationMemberUiStatus): IOrganizationMember['status'][] {
     if (uiStatus === 'active') return ['active'];
     return ['invited', 'suspended', 'removed'];
+  }
+
+  private async ensureDefaultOrganization(requestingUserId: string): Promise<IOrganization> {
+    let organization: IOrganization | null = await Organization.findOne({ slug: DEFAULT_ORGANIZATION_SLUG });
+
+    if (!organization) {
+      const ownerId = await this.resolveDefaultOrganizationOwnerId(requestingUserId);
+      try {
+        organization = await this.create({
+          name: DEFAULT_ORGANIZATION_NAME,
+          slug: DEFAULT_ORGANIZATION_SLUG,
+          type: 'enterprise',
+          industry: DEFAULT_ORGANIZATION_INDUSTRY,
+          description: 'Default ClyCites organization for users without an explicit tenant.',
+          email: DEFAULT_ORGANIZATION_EMAIL,
+          address: DEFAULT_ORGANIZATION_ADDRESS,
+          ownerId,
+        });
+      } catch (error) {
+        if (!this.isDuplicateKeyError(error)) {
+          throw error;
+        }
+        organization = await Organization.findOne({ slug: DEFAULT_ORGANIZATION_SLUG });
+      }
+    }
+
+    if (!organization) {
+      throw new NotFoundError('Default organization could not be resolved');
+    }
+
+    if (organization.status !== 'active' || !organization.isVerified) {
+      organization.status = 'active';
+      if (!organization.isVerified) {
+        organization.isVerified = true;
+        organization.verifiedAt = organization.verifiedAt || new Date();
+      }
+      await organization.save();
+    }
+
+    return organization;
+  }
+
+  private async resolveDefaultOrganizationOwnerId(fallbackUserId: string): Promise<string> {
+    const owner = await User.findOne({
+      role: { $in: ['super_admin', 'platform_admin', 'admin'] },
+      deletedAt: null,
+      isActive: true,
+    })
+      .sort({ createdAt: 1 })
+      .select('_id');
+
+    return owner?._id?.toString() || fallbackUserId;
+  }
+
+  private async resolveDefaultMemberRole(orgId: string) {
+    let role = await Role.findOne({
+      organization: orgId,
+      slug: 'member',
+      status: 'active',
+    });
+
+    if (!role) {
+      role = await Role.findOne({
+        slug: 'member',
+        scope: 'organization',
+        status: 'active',
+        $or: [{ organization: null }, { organization: { $exists: false } }],
+      });
+    }
+
+    if (!role) {
+      role = await Role.findOne({
+        organization: orgId,
+        slug: 'org-admin',
+        status: 'active',
+      });
+    }
+
+    if (role) {
+      return role;
+    }
+
+    try {
+      return await Role.create({
+        name: 'Member',
+        slug: 'member',
+        description: 'Default member access',
+        organization: new Types.ObjectId(orgId),
+        scope: 'organization',
+        level: 100,
+        isSystem: true,
+        isDefault: true,
+        permissions: [],
+      });
+    } catch (error) {
+      if (!this.isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      const existingRole = await Role.findOne({
+        organization: orgId,
+        slug: 'member',
+      });
+      if (!existingRole) {
+        throw new NotFoundError('Default member role could not be resolved');
+      }
+      return existingRole;
+    }
+  }
+
+  private isDuplicateKeyError(error: unknown): boolean {
+    return Boolean(
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: number }).code === 11000
+    );
   }
 
   /**
