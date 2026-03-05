@@ -16,7 +16,7 @@ router.use(authenticate);
  * @access  Authenticated users
  * @query   productId, region, district, period (daily|weekly|monthly)
  */
-router.get('/insights', marketIntelligenceController.getMarketInsights);
+router.get('/insights', marketIntelligenceController.getMarketInsights.bind(marketIntelligenceController));
 
 /**
  * @route   GET /api/market-intelligence/price-recommendation
@@ -26,7 +26,7 @@ router.get('/insights', marketIntelligenceController.getMarketInsights);
  */
 router.get(
   '/price-recommendation',
-  marketIntelligenceController.getPriceRecommendation
+  marketIntelligenceController.getPriceRecommendation.bind(marketIntelligenceController)
 );
 
 /**
@@ -35,7 +35,7 @@ router.get(
  * @access  Authenticated users
  * @query   productId, period (days)
  */
-router.get('/trends', marketIntelligenceController.getMarketTrends);
+router.get('/trends', marketIntelligenceController.getMarketTrends.bind(marketIntelligenceController));
 
 /**
  * @route   GET /api/market-intelligence/compare
@@ -43,7 +43,7 @@ router.get('/trends', marketIntelligenceController.getMarketTrends);
  * @access  Authenticated users
  * @query   productId, regions (comma-separated)
  */
-router.get('/compare', marketIntelligenceController.getComparativeAnalysis);
+router.get('/compare', marketIntelligenceController.getComparativeAnalysis.bind(marketIntelligenceController));
 
 /**
  * @route   POST /api/market-intelligence/alerts
@@ -51,28 +51,28 @@ router.get('/compare', marketIntelligenceController.getComparativeAnalysis);
  * @access  Authenticated users
  * @body    { product, region, district, conditions, notificationChannels }
  */
-router.post('/alerts', marketIntelligenceController.createPriceAlert);
+router.post('/alerts', marketIntelligenceController.createPriceAlert.bind(marketIntelligenceController));
 
 /**
  * @route   GET /api/market-intelligence/alerts
  * @desc    Get user's price alerts
  * @access  Authenticated users
  */
-router.get('/alerts', marketIntelligenceController.getUserAlerts);
+router.get('/alerts', marketIntelligenceController.getUserAlerts.bind(marketIntelligenceController));
 
 /**
  * @route   PATCH /api/market-intelligence/alerts/:alertId
  * @desc    Update a price alert
  * @access  Alert owner
  */
-router.patch('/alerts/:alertId', marketIntelligenceController.updatePriceAlert);
+router.patch('/alerts/:alertId', marketIntelligenceController.updatePriceAlert.bind(marketIntelligenceController));
 
 /**
  * @route   DELETE /api/market-intelligence/alerts/:alertId
  * @desc    Delete a price alert
  * @access  Alert owner
  */
-router.delete('/alerts/:alertId', marketIntelligenceController.deletePriceAlert);
+router.delete('/alerts/:alertId', marketIntelligenceController.deletePriceAlert.bind(marketIntelligenceController));
 
 /**
  * @route   POST /api/market-intelligence/alerts/check
@@ -82,7 +82,7 @@ router.delete('/alerts/:alertId', marketIntelligenceController.deletePriceAlert)
 router.post(
   '/alerts/check',
   authorize('admin'),
-  marketIntelligenceController.checkPriceAlerts
+  marketIntelligenceController.checkPriceAlerts.bind(marketIntelligenceController)
 );
 
 /**
@@ -90,57 +90,57 @@ router.post(
  * @desc    List recommendation resources
  * @access  Authenticated users (scoped)
  */
-router.get('/recommendations', marketIntelligenceController.listRecommendations);
+router.get('/recommendations', marketIntelligenceController.listRecommendations.bind(marketIntelligenceController));
 
 /**
  * @route   POST /api/market-intelligence/recommendations
  * @desc    Create recommendation resource
  * @access  Authenticated users
  */
-router.post('/recommendations', marketIntelligenceController.createRecommendation);
+router.post('/recommendations', marketIntelligenceController.createRecommendation.bind(marketIntelligenceController));
 
 /**
  * @route   GET /api/market-intelligence/recommendations/:recommendationId
  * @desc    Get recommendation resource
  * @access  Scoped
  */
-router.get('/recommendations/:recommendationId', marketIntelligenceController.getRecommendation);
+router.get('/recommendations/:recommendationId', marketIntelligenceController.getRecommendation.bind(marketIntelligenceController));
 
 /**
  * @route   PATCH /api/market-intelligence/recommendations/:recommendationId
  * @desc    Update recommendation resource
  * @access  Scoped owner/admin
  */
-router.patch('/recommendations/:recommendationId', marketIntelligenceController.updateRecommendation);
+router.patch('/recommendations/:recommendationId', marketIntelligenceController.updateRecommendation.bind(marketIntelligenceController));
 
 /**
  * @route   DELETE /api/market-intelligence/recommendations/:recommendationId
  * @desc    Delete recommendation resource
  * @access  Scoped owner/admin
  */
-router.delete('/recommendations/:recommendationId', marketIntelligenceController.deleteRecommendation);
+router.delete('/recommendations/:recommendationId', marketIntelligenceController.deleteRecommendation.bind(marketIntelligenceController));
 
-router.post('/recommendations/:recommendationId/approve', marketIntelligenceController.approveRecommendation);
-router.post('/recommendations/:recommendationId/publish', marketIntelligenceController.publishRecommendation);
-router.post('/recommendations/:recommendationId/retract', marketIntelligenceController.retractRecommendation);
+router.post('/recommendations/:recommendationId/approve', marketIntelligenceController.approveRecommendation.bind(marketIntelligenceController));
+router.post('/recommendations/:recommendationId/publish', marketIntelligenceController.publishRecommendation.bind(marketIntelligenceController));
+router.post('/recommendations/:recommendationId/retract', marketIntelligenceController.retractRecommendation.bind(marketIntelligenceController));
 
 /**
  * @route   GET /api/market-intelligence/data-sources
  * @desc    List data source resources
  * @access  Scoped users
  */
-router.get('/data-sources', marketIntelligenceController.listDataSources);
+router.get('/data-sources', marketIntelligenceController.listDataSources.bind(marketIntelligenceController));
 
 /**
  * @route   POST /api/market-intelligence/data-sources
  * @desc    Create data source
  * @access  Authenticated users
  */
-router.post('/data-sources', marketIntelligenceController.createDataSource);
+router.post('/data-sources', marketIntelligenceController.createDataSource.bind(marketIntelligenceController));
 
-router.get('/data-sources/:sourceId', marketIntelligenceController.getDataSource);
-router.patch('/data-sources/:sourceId', marketIntelligenceController.updateDataSource);
-router.delete('/data-sources/:sourceId', marketIntelligenceController.deleteDataSource);
-router.post('/data-sources/:sourceId/refresh', marketIntelligenceController.refreshDataSource);
+router.get('/data-sources/:sourceId', marketIntelligenceController.getDataSource.bind(marketIntelligenceController));
+router.patch('/data-sources/:sourceId', marketIntelligenceController.updateDataSource.bind(marketIntelligenceController));
+router.delete('/data-sources/:sourceId', marketIntelligenceController.deleteDataSource.bind(marketIntelligenceController));
+router.post('/data-sources/:sourceId/refresh', marketIntelligenceController.refreshDataSource.bind(marketIntelligenceController));
 
 export default router;
