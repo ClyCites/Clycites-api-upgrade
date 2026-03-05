@@ -24,69 +24,69 @@ router.get(
   '/organizations',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(listAdminOrganizationsValidator),
-  AdminWorkspaceController.listOrganizations
+  AdminWorkspaceController.listOrganizations.bind(AdminWorkspaceController)
 );
 
 router.get(
   '/roles',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(listRolesValidator),
-  AdminWorkspaceController.listRoles
+  AdminWorkspaceController.listRoles.bind(AdminWorkspaceController)
 );
 router.post(
   '/roles',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(createRoleValidator),
-  AdminWorkspaceController.createRole
+  AdminWorkspaceController.createRole.bind(AdminWorkspaceController)
 );
 router.get(
   '/roles/:roleId',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(roleIdValidator),
-  AdminWorkspaceController.getRole
+  AdminWorkspaceController.getRole.bind(AdminWorkspaceController)
 );
 router.patch(
   '/roles/:roleId',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(updateRoleValidator),
-  AdminWorkspaceController.updateRole
+  AdminWorkspaceController.updateRole.bind(AdminWorkspaceController)
 );
 router.delete(
   '/roles/:roleId',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(roleIdValidator),
-  AdminWorkspaceController.deleteRole
+  AdminWorkspaceController.deleteRole.bind(AdminWorkspaceController)
 );
 
 router.get(
   '/permissions',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(listPermissionsValidator),
-  AdminWorkspaceController.listPermissions
+  AdminWorkspaceController.listPermissions.bind(AdminWorkspaceController)
 );
 router.get(
   '/permissions/:permissionId',
   authorize('admin', 'platform_admin', 'super_admin'),
   validate(permissionIdValidator),
-  AdminWorkspaceController.getPermission
+  AdminWorkspaceController.getPermission.bind(AdminWorkspaceController)
 );
 router.post(
   '/permissions',
   requireSuperAdmin(['super_admin:rbac:override']),
   validate(createPermissionValidator),
-  AdminWorkspaceController.createPermission
+  AdminWorkspaceController.createPermission.bind(AdminWorkspaceController)
 );
 router.patch(
   '/permissions/:permissionId',
   requireSuperAdmin(['super_admin:rbac:override']),
   validate(updatePermissionValidator),
-  AdminWorkspaceController.updatePermission
+  AdminWorkspaceController.updatePermission.bind(AdminWorkspaceController)
 );
 router.delete(
   '/permissions/:permissionId',
   requireSuperAdmin(['super_admin:rbac:override']),
   validate(permissionIdValidator),
-  AdminWorkspaceController.deletePermission
+  AdminWorkspaceController.deletePermission.bind(AdminWorkspaceController)
 );
 
 export default router;
