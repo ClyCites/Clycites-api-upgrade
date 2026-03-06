@@ -2,6 +2,8 @@ const auth = [{ BearerAuth: [] }];
 const r = (s: object) => ({ required: true, content: { 'application/json': { schema: s } } });
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
+const recommendationIdParam = { name: 'recommendationId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
+const sourceIdParam = { name: 'sourceId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
 
 export const marketIntelligencePaths: Record<string, unknown> = {
 
@@ -193,12 +195,26 @@ export const marketIntelligencePaths: Record<string, unknown> = {
           },
           notificationChannels: { type: 'array', items: { type: 'string', enum: ['push', 'email', 'sms', 'in_app', 'inApp'] } },
           alertType: { type: 'string', enum: ['price_drop', 'price_increase', 'target_price', 'availability'] },
+          status: { type: 'string', enum: ['new', 'investigating', 'investigated', 'dismissed'] },
+          uiStatus: { type: 'string', enum: ['new', 'investigating', 'investigated', 'dismissed'] },
           active: { type: 'boolean' },
           isActive: { type: 'boolean', description: 'Legacy compatibility alias for active.' },
         },
       }),
       responses: {
-        201: { description: 'Alert created.' },
+        201: {
+          description: 'Alert created.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { $ref: '#/components/schemas/MarketSignal' } } },
+                ],
+              },
+            },
+          },
+        },
         400: { $ref: '#/components/responses/ValidationError' },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
@@ -211,14 +227,26 @@ export const marketIntelligencePaths: Record<string, unknown> = {
       parameters: [
         pageParam,
         limitParam,
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive'] }, description: 'Preferred status filter; takes precedence over active.' },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive', 'new', 'investigating', 'investigated', 'dismissed'] }, description: 'Supports legacy active/inactive or canonical market-signal statuses.' },
         { name: 'active', in: 'query', schema: { type: 'boolean' } },
         { name: 'product', in: 'query', schema: { type: 'string' } },
         { name: 'region', in: 'query', schema: { type: 'string' } },
         { name: 'district', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
-        200: { description: 'Alert list.' },
+        200: {
+          description: 'Alert list.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  { type: 'object', properties: { data: { type: 'array', items: { $ref: '#/components/schemas/MarketSignal' } } } },
+                ],
+              },
+            },
+          },
+        },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
     },
@@ -228,10 +256,11 @@ export const marketIntelligencePaths: Record<string, unknown> = {
     patch: {
       tags: ['Market Intelligence'],
       summary: 'Update market alert',
+      description: 'Supports canonical market-signal status transitions and returns 400 on invalid transitions.',
       operationId: 'updateMIAlert',
       security: auth,
       parameters: [{ name: 'alertId', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
-      requestBody: r({ type: 'object', properties: { condition: { type: 'object' }, conditions: { type: 'object' }, notificationChannels: { type: 'array', items: { type: 'string' } }, active: { type: 'boolean' }, isActive: { type: 'boolean' } } }),
+      requestBody: r({ type: 'object', properties: { condition: { type: 'object' }, conditions: { type: 'object' }, notificationChannels: { type: 'array', items: { type: 'string' } }, status: { type: 'string', enum: ['new', 'investigating', 'investigated', 'dismissed'] }, uiStatus: { type: 'string', enum: ['new', 'investigating', 'investigated', 'dismissed'] }, active: { type: 'boolean' }, isActive: { type: 'boolean' } } }),
       responses: {
         200: { description: 'Alert updated.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -249,6 +278,235 @@ export const marketIntelligencePaths: Record<string, unknown> = {
         200: { description: 'Deleted.' },
         401: { $ref: '#/components/responses/Unauthorized' },
         404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/recommendations': {
+    get: {
+      tags: ['Market Intelligence'],
+      summary: 'List recommendations',
+      security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'productId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'marketId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'region', in: 'query', schema: { type: 'string' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'approved', 'published', 'retracted'] } },
+      ],
+      responses: {
+        200: { description: 'Recommendations retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Create recommendation',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['recommendationType'],
+        properties: {
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          productId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          marketId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          region: { type: 'string' },
+          recommendationType: { type: 'string', example: 'price' },
+          recommendedPrice: { type: 'number', minimum: 0 },
+          currency: { type: 'string', example: 'UGX' },
+          rationale: { type: 'string' },
+          status: { type: 'string', enum: ['draft', 'approved', 'published', 'retracted'] },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        201: { description: 'Recommendation created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/recommendations/{recommendationId}': {
+    get: {
+      tags: ['Market Intelligence'],
+      summary: 'Get recommendation',
+      security: auth,
+      parameters: [recommendationIdParam],
+      responses: {
+        200: { description: 'Recommendation retrieved.', content: { 'application/json': { schema: { $ref: '#/components/schemas/MarketRecommendation' } } } },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Market Intelligence'],
+      summary: 'Update recommendation',
+      description: 'Validates recommendation status transitions and returns 400 on invalid transitions.',
+      security: auth,
+      parameters: [recommendationIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          recommendationType: { type: 'string' },
+          recommendedPrice: { type: 'number', minimum: 0 },
+          currency: { type: 'string' },
+          rationale: { type: 'string' },
+          status: { type: 'string', enum: ['draft', 'approved', 'published', 'retracted'] },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        200: { description: 'Recommendation updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+    delete: {
+      tags: ['Market Intelligence'],
+      summary: 'Delete recommendation',
+      security: auth,
+      parameters: [recommendationIdParam],
+      responses: {
+        200: { description: 'Recommendation deleted.' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/recommendations/{recommendationId}/approve': {
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Approve recommendation',
+      security: auth,
+      parameters: [recommendationIdParam],
+      responses: {
+        200: { description: 'Recommendation approved.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/recommendations/{recommendationId}/publish': {
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Publish recommendation',
+      security: auth,
+      parameters: [recommendationIdParam],
+      responses: {
+        200: { description: 'Recommendation published.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/recommendations/{recommendationId}/retract': {
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Retract recommendation',
+      security: auth,
+      parameters: [recommendationIdParam],
+      responses: {
+        200: { description: 'Recommendation retracted.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/data-sources': {
+    get: {
+      tags: ['Market Intelligence'],
+      summary: 'List market data sources',
+      security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'name', in: 'query', schema: { type: 'string' } },
+        { name: 'provider', in: 'query', schema: { type: 'string' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'paused', 'disabled'] } },
+      ],
+      responses: {
+        200: { description: 'Data sources retrieved.' },
+      },
+    },
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Create market data source',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['name'],
+        properties: {
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          name: { type: 'string' },
+          provider: { type: 'string' },
+          endpoint: { type: 'string' },
+          authType: { type: 'string', enum: ['none', 'api_key', 'oauth2'] },
+          pullIntervalMinutes: { type: 'integer', minimum: 1, maximum: 1440 },
+          status: { type: 'string', enum: ['active', 'paused', 'disabled'] },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        201: { description: 'Data source created.' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/data-sources/{sourceId}': {
+    get: {
+      tags: ['Market Intelligence'],
+      summary: 'Get data source',
+      security: auth,
+      parameters: [sourceIdParam],
+      responses: {
+        200: { description: 'Data source retrieved.', content: { 'application/json': { schema: { $ref: '#/components/schemas/MarketDataSource' } } } },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Market Intelligence'],
+      summary: 'Update data source',
+      description: 'Validates data source status transitions and returns 400 on invalid transitions.',
+      security: auth,
+      parameters: [sourceIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          provider: { type: 'string' },
+          endpoint: { type: 'string' },
+          authType: { type: 'string', enum: ['none', 'api_key', 'oauth2'] },
+          pullIntervalMinutes: { type: 'integer', minimum: 1, maximum: 1440 },
+          status: { type: 'string', enum: ['active', 'paused', 'disabled'] },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        200: { description: 'Data source updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+    delete: {
+      tags: ['Market Intelligence'],
+      summary: 'Delete data source',
+      security: auth,
+      parameters: [sourceIdParam],
+      responses: {
+        200: { description: 'Data source deleted.' },
+      },
+    },
+  },
+
+  '/api/v1/market-intelligence/data-sources/{sourceId}/refresh': {
+    post: {
+      tags: ['Market Intelligence'],
+      summary: 'Refresh data source',
+      security: auth,
+      parameters: [sourceIdParam],
+      responses: {
+        200: { description: 'Data source refresh queued.' },
       },
     },
   },

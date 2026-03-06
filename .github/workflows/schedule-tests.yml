@@ -1,0 +1,55 @@
+name: Scheduled Tests
+
+on:
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+    # Run tests every Monday at 8 AM UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [ staging, master ]
+
+jobs:
+  comprehensive-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run full test suite with coverage
+        run: npm test
+      
+      - name: Upload coverage to Codecov
+        if: ${{ hashFiles('coverage/coverage-final.json') != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/coverage-final.json
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+      
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "Tests completed at $(date)" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Notify on failure
+        if: ${{ failure() && secrets.SLACK_WEBHOOK != '' }}
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Scheduled tests failed!'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true

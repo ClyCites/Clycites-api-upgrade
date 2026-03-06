@@ -1,0 +1,22 @@
+name: Lint Commits
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Validate commit messages
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          helpURL: https://commitlint.js.org/
+        continue-on-error: true

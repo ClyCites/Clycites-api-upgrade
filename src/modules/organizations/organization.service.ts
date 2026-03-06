@@ -46,6 +46,59 @@ interface UserOrganization {
   title?: string;
 }
 
+export type OrganizationUiStatus = 'active' | 'disabled';
+export type OrganizationMemberUiStatus = 'active' | 'disabled';
+
+interface OrganizationMemberFilters {
+  status?: string;
+  uiStatus?: OrganizationMemberUiStatus;
+  page?: number;
+  limit?: number;
+}
+
+interface PaginatedOrganizationMembers {
+  members: IOrganizationMember[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+interface ListOrganizationsFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  uiStatus?: OrganizationUiStatus;
+  search?: string;
+}
+
+interface PaginatedOrganizations {
+  organizations: IOrganization[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+interface EnsureDefaultOrganizationMembershipResult {
+  organization: IOrganization;
+  member: IOrganizationMember;
+}
+
+const DEFAULT_ORGANIZATION_SLUG = 'clycites';
+const DEFAULT_ORGANIZATION_NAME = 'ClyCites';
+const DEFAULT_ORGANIZATION_INDUSTRY = 'Agriculture Technology';
+const DEFAULT_ORGANIZATION_EMAIL = 'ops@clycites.com';
+const DEFAULT_ORGANIZATION_ADDRESS = {
+  city: 'Kampala',
+  state: 'Central',
+  country: 'Uganda',
+};
+
 class OrganizationService {
   /**
    * Create a new organization
@@ -318,19 +371,37 @@ class OrganizationService {
   /**
    * Get organization members
    */
-  async getMembers(orgId: string, filters?: { status?: string }): Promise<IOrganizationMember[]> {
+  async getMembers(orgId: string, filters?: OrganizationMemberFilters): Promise<PaginatedOrganizationMembers> {
+    const page = Math.max(1, Number(filters?.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(filters?.limit || 20)));
+    const skip = (page - 1) * limit;
     const query: Record<string, unknown> = { organization: orgId };
 
     if (filters?.status) {
       query.status = filters.status;
+    } else if (filters?.uiStatus) {
+      query.status = { $in: this.mapUiStatusToMemberStatuses(filters.uiStatus) };
     }
 
-    const members = await OrganizationMember.find(query)
-      .populate('user', 'firstName lastName email profileImage')
-      .populate('role', 'name description')
-      .sort({ joinedAt: -1 });
+    const [members, total] = await Promise.all([
+      OrganizationMember.find(query)
+        .populate('user', 'firstName lastName email profileImage')
+        .populate('role', 'name description')
+        .sort({ joinedAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      OrganizationMember.countDocuments(query),
+    ]);
 
-    return members;
+    return {
+      members,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
   }
 
   /**
@@ -380,6 +451,144 @@ class OrganizationService {
         after: { status: 'removed', reason },
       },
     });
+  }
+
+  async setMemberStatus(
+    orgId: string,
+    memberId: string,
+    action: 'enable' | 'disable',
+    actedBy: string,
+    reason?: string
+  ): Promise<IOrganizationMember> {
+    const member = await OrganizationMember.findOne({
+      _id: memberId,
+      organization: orgId,
+    });
+
+    if (!member) {
+      throw new NotFoundError('Member not found');
+    }
+
+    const beforeState = member.toObject();
+    const currentStatus = member.status;
+
+    if (action === 'disable') {
+      if (currentStatus === 'removed') {
+        throw new BadRequestError('Cannot disable a removed member');
+      }
+
+      if (currentStatus === 'suspended') {
+        return member;
+      }
+
+      member.status = 'suspended';
+      member.suspendedBy = new Types.ObjectId(actedBy);
+      member.suspendedAt = new Date();
+      member.suspensionReason = reason;
+
+      if (currentStatus === 'active') {
+        await Organization.findByIdAndUpdate(orgId, {
+          $inc: { 'stats.memberCount': -1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      }
+    } else {
+      if (currentStatus === 'removed') {
+        throw new BadRequestError('Cannot enable a removed member');
+      }
+
+      if (currentStatus === 'invited') {
+        throw new BadRequestError('Cannot enable an invited member before invitation acceptance');
+      }
+
+      if (currentStatus === 'active') {
+        return member;
+      }
+
+      member.status = 'active';
+      member.suspendedBy = undefined;
+      member.suspendedAt = undefined;
+      member.suspensionReason = undefined;
+      if (!member.joinedAt) {
+        member.joinedAt = new Date();
+      }
+
+      if (currentStatus === 'suspended') {
+        await Organization.findByIdAndUpdate(orgId, {
+          $inc: { 'stats.memberCount': 1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      }
+    }
+
+    await member.save();
+
+    await AuditService.log({
+      action: `organization.member.${action}d`,
+      resource: 'organization_member',
+      resourceId: memberId,
+      userId: actedBy,
+      organizationId: orgId,
+      details: {
+        before: beforeState,
+        after: {
+          status: member.status,
+          reason,
+        },
+      },
+    });
+
+    return member;
+  }
+
+  async setOrganizationStatus(
+    orgId: string,
+    action: 'enable' | 'disable',
+    actedBy: string,
+    reason?: string
+  ): Promise<IOrganization> {
+    const organization = await this.getById(orgId);
+    const beforeState = organization.toObject();
+    const currentStatus = organization.status;
+
+    if (action === 'disable') {
+      if (currentStatus === 'suspended' || currentStatus === 'archived') {
+        return organization;
+      }
+
+      organization.status = 'suspended';
+      organization.suspendedAt = new Date();
+    } else {
+      if (currentStatus === 'active') {
+        return organization;
+      }
+
+      if (currentStatus === 'archived') {
+        throw new BadRequestError('Archived organizations cannot be re-enabled');
+      }
+
+      organization.status = 'active';
+      organization.suspendedAt = undefined;
+    }
+
+    await organization.save();
+
+    await AuditService.log({
+      action: `organization.${action}d`,
+      resource: 'organization',
+      resourceId: orgId,
+      userId: actedBy,
+      organizationId: orgId,
+      details: {
+        before: beforeState,
+        after: {
+          status: organization.status,
+          reason,
+        },
+      },
+    });
+
+    return organization;
   }
 
   /**
@@ -449,6 +658,249 @@ class OrganizationService {
       department: m.department,
       title: m.title,
     }));
+  }
+
+  async ensureDefaultOrganizationMembership(
+    userId: string
+  ): Promise<EnsureDefaultOrganizationMembershipResult> {
+    const user = await User.findOne({ _id: userId, deletedAt: null }).select('_id');
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    const organization = await this.ensureDefaultOrganization(userId);
+    const role = await this.resolveDefaultMemberRole(organization._id.toString());
+
+    let member = await OrganizationMember.findOne({
+      organization: organization._id,
+      user: user._id,
+    });
+
+    if (!member) {
+      try {
+        member = await OrganizationMember.create({
+          organization: organization._id,
+          user: user._id,
+          role: role._id,
+          status: 'active',
+          joinedAt: new Date(),
+        });
+
+        await Organization.findByIdAndUpdate(organization._id, {
+          $inc: { 'stats.memberCount': 1 },
+          'stats.lastActivityAt': new Date(),
+        });
+      } catch (error) {
+        if (!this.isDuplicateKeyError(error)) {
+          throw error;
+        }
+
+        member = await OrganizationMember.findOne({
+          organization: organization._id,
+          user: user._id,
+        });
+      }
+    }
+
+    if (!member) {
+      throw new NotFoundError('Organization membership could not be resolved');
+    }
+
+    if (member.status !== 'active') {
+      member.status = 'active';
+      member.role = role._id;
+      member.joinedAt = member.joinedAt || new Date();
+      member.invitationToken = undefined;
+      member.invitationExpiresAt = undefined;
+      member.suspendedBy = undefined;
+      member.suspendedAt = undefined;
+      member.suspensionReason = undefined;
+      member.removedBy = undefined;
+      member.removedAt = undefined;
+      member.removalReason = undefined;
+      await member.save();
+
+      await Organization.findByIdAndUpdate(organization._id, {
+        $inc: { 'stats.memberCount': 1 },
+        'stats.lastActivityAt': new Date(),
+      });
+    }
+
+    return { organization, member };
+  }
+
+  async listOrganizations(filters?: ListOrganizationsFilters): Promise<PaginatedOrganizations> {
+    const page = Math.max(1, Number(filters?.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(filters?.limit || 20)));
+    const skip = (page - 1) * limit;
+    const query: Record<string, unknown> = {};
+
+    if (filters?.status) {
+      query.status = filters.status;
+    } else if (filters?.uiStatus) {
+      query.status = { $in: this.mapUiStatusToOrganizationStatuses(filters.uiStatus) };
+    }
+
+    if (filters?.search) {
+      const value = filters.search.trim();
+      if (value) {
+        query.$or = [
+          { name: { $regex: value, $options: 'i' } },
+          { slug: { $regex: value, $options: 'i' } },
+          { industry: { $regex: value, $options: 'i' } },
+        ];
+      }
+    }
+
+    const [organizations, total] = await Promise.all([
+      Organization.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Organization.countDocuments(query),
+    ]);
+
+    return {
+      organizations,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  toOrganizationUiStatus(status: IOrganization['status']): OrganizationUiStatus {
+    return status === 'active' ? 'active' : 'disabled';
+  }
+
+  toMemberUiStatus(status: IOrganizationMember['status']): OrganizationMemberUiStatus {
+    return status === 'active' ? 'active' : 'disabled';
+  }
+
+  private mapUiStatusToOrganizationStatuses(uiStatus: OrganizationUiStatus): IOrganization['status'][] {
+    if (uiStatus === 'active') return ['active'];
+    return ['pending', 'suspended', 'archived'];
+  }
+
+  private mapUiStatusToMemberStatuses(uiStatus: OrganizationMemberUiStatus): IOrganizationMember['status'][] {
+    if (uiStatus === 'active') return ['active'];
+    return ['invited', 'suspended', 'removed'];
+  }
+
+  private async ensureDefaultOrganization(requestingUserId: string): Promise<IOrganization> {
+    let organization: IOrganization | null = await Organization.findOne({ slug: DEFAULT_ORGANIZATION_SLUG });
+
+    if (!organization) {
+      const ownerId = await this.resolveDefaultOrganizationOwnerId(requestingUserId);
+      try {
+        organization = await this.create({
+          name: DEFAULT_ORGANIZATION_NAME,
+          slug: DEFAULT_ORGANIZATION_SLUG,
+          type: 'enterprise',
+          industry: DEFAULT_ORGANIZATION_INDUSTRY,
+          description: 'Default ClyCites organization for users without an explicit tenant.',
+          email: DEFAULT_ORGANIZATION_EMAIL,
+          address: DEFAULT_ORGANIZATION_ADDRESS,
+          ownerId,
+        });
+      } catch (error) {
+        if (!this.isDuplicateKeyError(error)) {
+          throw error;
+        }
+        organization = await Organization.findOne({ slug: DEFAULT_ORGANIZATION_SLUG });
+      }
+    }
+
+    if (!organization) {
+      throw new NotFoundError('Default organization could not be resolved');
+    }
+
+    if (organization.status !== 'active' || !organization.isVerified) {
+      organization.status = 'active';
+      if (!organization.isVerified) {
+        organization.isVerified = true;
+        organization.verifiedAt = organization.verifiedAt || new Date();
+      }
+      await organization.save();
+    }
+
+    return organization;
+  }
+
+  private async resolveDefaultOrganizationOwnerId(fallbackUserId: string): Promise<string> {
+    const owner = await User.findOne({
+      role: { $in: ['super_admin', 'platform_admin', 'admin'] },
+      deletedAt: null,
+      isActive: true,
+    })
+      .sort({ createdAt: 1 })
+      .select('_id');
+
+    return owner?._id?.toString() || fallbackUserId;
+  }
+
+  private async resolveDefaultMemberRole(orgId: string) {
+    let role = await Role.findOne({
+      organization: orgId,
+      slug: 'member',
+      status: 'active',
+    });
+
+    if (!role) {
+      role = await Role.findOne({
+        slug: 'member',
+        scope: 'organization',
+        status: 'active',
+        $or: [{ organization: null }, { organization: { $exists: false } }],
+      });
+    }
+
+    if (!role) {
+      role = await Role.findOne({
+        organization: orgId,
+        slug: 'org-admin',
+        status: 'active',
+      });
+    }
+
+    if (role) {
+      return role;
+    }
+
+    try {
+      return await Role.create({
+        name: 'Member',
+        slug: 'member',
+        description: 'Default member access',
+        organization: new Types.ObjectId(orgId),
+        scope: 'organization',
+        level: 100,
+        isSystem: true,
+        isDefault: true,
+        permissions: [],
+      });
+    } catch (error) {
+      if (!this.isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      const existingRole = await Role.findOne({
+        organization: orgId,
+        slug: 'member',
+      });
+      if (!existingRole) {
+        throw new NotFoundError('Default member role could not be resolved');
+      }
+      return existingRole;
+    }
+  }
+
+  private isDuplicateKeyError(error: unknown): boolean {
+    return Boolean(
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: number }).code === 11000
+    );
   }
 
   /**

@@ -240,7 +240,7 @@ export const authPaths: Record<string, unknown> = {
     get: {
       tags: ['Authentication'],
       summary: 'List API tokens',
-      description: 'Returns API token metadata (masked). Token secret values are never returned.',
+      description: 'Returns API token metadata (masked). Token secret values are never returned. Payload includes canonical `status` and `uiStatus` (`active|revoked|expired`).',
       operationId: 'listApiTokens',
       security: [{ BearerAuth: [] }],
       parameters: [
@@ -306,6 +306,7 @@ export const authPaths: Record<string, unknown> = {
     get: {
       tags: ['Authentication'],
       summary: 'Get API token metadata',
+      description: 'Returns token metadata with deterministic `status` and `uiStatus` values.',
       operationId: 'getApiTokenById',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
@@ -360,7 +361,7 @@ export const authPaths: Record<string, unknown> = {
     post: {
       tags: ['Authentication'],
       summary: 'Rotate API token secret',
-      description: 'Revokes previous secret and returns a new secret once.',
+      description: 'Revokes previous secret and returns a new secret once. Invalid lifecycle requests return `400` errors.',
       operationId: 'rotateApiToken',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
@@ -391,6 +392,7 @@ export const authPaths: Record<string, unknown> = {
     post: {
       tags: ['Authentication'],
       summary: 'Revoke API token',
+      description: 'Revokes token and returns metadata with `status/uiStatus=revoked`.',
       operationId: 'revokeApiToken',
       security: [{ BearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],

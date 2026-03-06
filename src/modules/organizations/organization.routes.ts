@@ -56,6 +56,28 @@ router.patch(
 );
 
 /**
+ * @route   POST /organizations/:id/disable
+ * @desc    Disable organization
+ * @access  Organization admins
+ */
+router.post(
+  '/:id/disable',
+  requirePermission('organization', 'update'),
+  OrganizationController.disableOrganization
+);
+
+/**
+ * @route   POST /organizations/:id/enable
+ * @desc    Enable organization
+ * @access  Organization admins
+ */
+router.post(
+  '/:id/enable',
+  requirePermission('organization', 'update'),
+  OrganizationController.enableOrganization
+);
+
+/**
  * @route   POST /organizations/:id/members/invite
  * @desc    Invite member to organization
  * @access  Organization admins
@@ -107,6 +129,28 @@ router.patch(
   '/:id/members/:memberId/role',
   requirePermission('members', 'update'),
   OrganizationController.updateMemberRole
+);
+
+/**
+ * @route   POST /organizations/:id/members/:memberId/disable
+ * @desc    Disable organization member
+ * @access  Organization admins
+ */
+router.post(
+  '/:id/members/:memberId/disable',
+  requirePermission('members', 'update'),
+  OrganizationController.disableMember
+);
+
+/**
+ * @route   POST /organizations/:id/members/:memberId/enable
+ * @desc    Enable organization member
+ * @access  Organization admins
+ */
+router.post(
+  '/:id/members/:memberId/enable',
+  requirePermission('members', 'update'),
+  OrganizationController.enableMember
 );
 
 export default router;

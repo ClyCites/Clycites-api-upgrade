@@ -12,9 +12,12 @@ import {
   WeatherUnit,
   AlertSeverity,
   AlertType,
+  AlertUiStatus,
+  AlertStatus,
   ForecastHorizon,
   RuleOperator,
   DeliveryChannel,
+  RuleLifecycleStatus,
   SensorReadingStatus,
 } from './weather.types';
 
@@ -153,6 +156,41 @@ export const updateProfileValidator = [
     .isInt({ min: 0, max: 23 }),
 ];
 
+export const listProfilesValidator = [
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('page must be >= 1'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit must be 1-100'),
+  query('sortBy')
+    .optional()
+    .isString()
+    .withMessage('sortBy must be a string'),
+  query('sortOrder')
+    .optional()
+    .isIn(['asc', 'desc'])
+    .withMessage('sortOrder must be asc or desc'),
+  query('organizationId')
+    .optional()
+    .isMongoId()
+    .withMessage('organizationId must be a valid MongoDB ObjectId'),
+  query('farmerId')
+    .optional()
+    .isMongoId()
+    .withMessage('farmerId must be a valid MongoDB ObjectId'),
+  query('farmId')
+    .optional()
+    .isMongoId()
+    .withMessage('farmId must be a valid MongoDB ObjectId'),
+  query('search')
+    .optional()
+    .isString()
+    .withMessage('search must be a string'),
+];
+
 // ============================================================================
 // Profile ID param
 // ============================================================================
@@ -230,6 +268,21 @@ export const createRuleValidator = [
     .optional()
     .isInt({ min: 1, max: 100 }).withMessage('priority must be 1-100'),
 
+  body('status')
+    .optional()
+    .isIn(Object.values(RuleLifecycleStatus))
+    .withMessage(`status must be one of: ${Object.values(RuleLifecycleStatus).join(', ')}`),
+
+  body('uiStatus')
+    .optional()
+    .isIn(Object.values(RuleLifecycleStatus))
+    .withMessage(`uiStatus must be one of: ${Object.values(RuleLifecycleStatus).join(', ')}`),
+
+  body('active')
+    .optional()
+    .isBoolean()
+    .withMessage('active must be a boolean'),
+
   isOptionalObjectId('organizationId'),
 ];
 
@@ -270,6 +323,20 @@ export const updateRuleValidator = [
     .optional()
     .isBoolean().withMessage('isActive must be a boolean'),
 
+  body('active')
+    .optional()
+    .isBoolean().withMessage('active must be a boolean'),
+
+  body('status')
+    .optional()
+    .isIn(Object.values(RuleLifecycleStatus))
+    .withMessage(`status must be one of: ${Object.values(RuleLifecycleStatus).join(', ')}`),
+
+  body('uiStatus')
+    .optional()
+    .isIn(Object.values(RuleLifecycleStatus))
+    .withMessage(`uiStatus must be one of: ${Object.values(RuleLifecycleStatus).join(', ')}`),
+
   body('priority')
     .optional()
     .isInt({ min: 1, max: 100 }),
@@ -286,10 +353,13 @@ export const ruleIdValidator = [
 export const listAlertsValidator = [
   query('status')
     .optional()
-    .isIn(Object.values(AlertSeverity /* repurposed */))
+    .isIn(Object.values(AlertStatus))
+    .withMessage(`status must be one of: ${Object.values(AlertStatus).join(', ')}`),
+
+  query('uiStatus')
     .optional()
-    .isIn(['new', 'sent', 'acknowledged', 'expired', 'dismissed'])
-    .withMessage('Invalid status'),
+    .isIn(Object.values(AlertUiStatus))
+    .withMessage(`uiStatus must be one of: ${Object.values(AlertUiStatus).join(', ')}`),
 
   query('severity')
     .optional()
@@ -384,6 +454,22 @@ export const forecastQueryValidator = [
     .withMessage(`horizon must be one of: ${Object.values(ForecastHorizon).join(', ')}`),
 ];
 
+export const forecastHistoryValidator = [
+  ...forecastQueryValidator,
+  query('includeSuperseded')
+    .optional()
+    .isBoolean()
+    .withMessage('includeSuperseded must be a boolean'),
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('page must be >= 1'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit must be 1-100'),
+];
+
 // ============================================================================
 // Manual refresh (farmId param)
 // ============================================================================
@@ -396,6 +482,11 @@ export const farmIdParamValidator = [
 export const profileIdParamValidator = [
   param('profileId')
     .isMongoId().withMessage('profileId must be a valid MongoDB ObjectId'),
+];
+
+export const orgIdParamValidator = [
+  param('orgId')
+    .isMongoId().withMessage('orgId must be a valid MongoDB ObjectId'),
 ];
 
 export const readingIdValidator = [
@@ -461,4 +552,24 @@ export const updateConditionValidator = [
     .optional()
     .isString()
     .withMessage('qualityFlags items must be strings'),
+];
+
+export const testRuleValidator = [
+  isObjectId('id'),
+  body('profileId')
+    .optional()
+    .isMongoId()
+    .withMessage('profileId must be a valid MongoDB ObjectId'),
+  body('reading')
+    .optional()
+    .isObject()
+    .withMessage('reading must be an object'),
+  body('reading.temperatureCelsius')
+    .optional()
+    .isFloat({ min: -80, max: 80 })
+    .withMessage('reading.temperatureCelsius must be between -80 and 80'),
+  body('reading.humidity')
+    .optional()
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('reading.humidity must be between 0 and 100'),
 ];

@@ -18,6 +18,7 @@ import { AppError } from '../../common/errors/AppError';
 import FarmWeatherProfile from './farmWeatherProfile.model';
 import WeatherSnapshot from './weatherSnapshot.model';
 import WeatherRule from './weatherRule.model';
+import Forecast from './forecast.model';
 
 import weatherIngestService from './weatherIngest.service';
 import weatherAlertService from './weatherAlert.service';
@@ -28,6 +29,7 @@ import weatherProviderService from './weatherProvider.service';
 import {
   AlertSeverity,
   AlertStatus,
+  AlertUiStatus,
   AlertType,
   ForecastHorizon,
   ICreateProfileInput,
@@ -38,12 +40,44 @@ import {
   DeliveryChannel,
   SensorReadingStatus,
   IFarmWeatherProfileDocument,
+  IWeatherAlertDocument,
+  IWeatherReading,
+  RuleLifecycleStatus,
 } from './weather.types';
 import { PaginationUtil } from '../../common/utils/pagination';
 
-const privilegedRoles = new Set(['super_admin', 'platform_admin', 'admin', 'org:manager']);
+const privilegedRoles = new Set(['super_admin', 'platform_admin', 'admin', 'org:manager', 'trader']);
+
+const ruleStatusTransitions: Record<RuleLifecycleStatus, RuleLifecycleStatus[]> = {
+  [RuleLifecycleStatus.DRAFT]: [RuleLifecycleStatus.DRAFT, RuleLifecycleStatus.ACTIVE, RuleLifecycleStatus.DISABLED],
+  [RuleLifecycleStatus.ACTIVE]: [RuleLifecycleStatus.ACTIVE, RuleLifecycleStatus.DISABLED],
+  [RuleLifecycleStatus.DISABLED]: [RuleLifecycleStatus.DISABLED, RuleLifecycleStatus.ACTIVE],
+};
 
 const hasPrivilegedRole = (role?: string): boolean => !!role && privilegedRoles.has(role);
+
+const canAccessAcrossOrganizations = (role?: string): boolean =>
+  role === 'super_admin' || role === 'platform_admin';
+
+const toPlainObject = <T>(value: T): T => {
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
+  }
+  return value;
+};
+
+const toNullableString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const buildPagination = (page: number, limit: number, total: number) => ({
+  page,
+  limit,
+  total,
+  totalPages: Math.max(1, Math.ceil(total / limit)),
+});
 
 const assertCanAccessProfile = (req: AuthRequest, profile: IFarmWeatherProfileDocument): void => {
   if (hasPrivilegedRole(req.user?.role)) {
@@ -68,6 +102,122 @@ const assertCanAccessProfile = (req: AuthRequest, profile: IFarmWeatherProfileDo
   }
 
   throw new AppError('Access denied to weather profile', 403, 'FORBIDDEN');
+};
+
+const assertOrgScopeAccess = (req: AuthRequest, organizationId: string): void => {
+  if (canAccessAcrossOrganizations(req.user?.role)) return;
+
+  const actorOrgId = req.user?.orgId;
+  if (!actorOrgId || actorOrgId !== organizationId) {
+    throw new AppError('Access denied outside your organization scope', 403, 'FORBIDDEN');
+  }
+};
+
+const alertUiStatus = (alert: Pick<IWeatherAlertDocument, 'status' | 'triggeredBy' | 'resolvedAt'>): AlertUiStatus => {
+  if (alert.status === AlertStatus.ACKNOWLEDGED) return AlertUiStatus.ACKNOWLEDGED;
+  if (alert.status === AlertStatus.DISMISSED || alert.status === AlertStatus.EXPIRED || !!alert.resolvedAt) {
+    return AlertUiStatus.RESOLVED;
+  }
+  if (alert.triggeredBy === 'manual') return AlertUiStatus.ESCALATED;
+  return AlertUiStatus.NEW;
+};
+
+const withAlertStatus = <T extends Record<string, any>>(alert: T): T & {
+  uiStatus: AlertUiStatus;
+  resolvedBy?: string;
+  resolvedAt?: Date | string;
+  reason?: string;
+} => {
+  const plain = toPlainObject(alert);
+  const uiStatus = alertUiStatus(plain as unknown as IWeatherAlertDocument);
+  return {
+    ...plain,
+    uiStatus,
+    resolvedBy: plain.resolvedBy?.toString?.() ?? plain.resolvedBy,
+    resolvedAt: plain.resolvedAt,
+    reason: plain.resolutionReason,
+  };
+};
+
+const resolveRuleStatus = (rule: Record<string, any>): RuleLifecycleStatus => {
+  const explicit = rule.workflowState as RuleLifecycleStatus | undefined;
+  if (explicit && Object.values(RuleLifecycleStatus).includes(explicit)) {
+    return explicit;
+  }
+
+  if (rule.isActive) return RuleLifecycleStatus.ACTIVE;
+  return RuleLifecycleStatus.DISABLED;
+};
+
+const withRuleStatus = <T extends Record<string, any>>(rule: T): T & {
+  status: RuleLifecycleStatus;
+  uiStatus: RuleLifecycleStatus;
+} => {
+  const plain = toPlainObject(rule);
+  const status = resolveRuleStatus(plain);
+  return {
+    ...plain,
+    status,
+    uiStatus: status,
+  };
+};
+
+const assertCanAccessAlert = (req: AuthRequest, alert: IWeatherAlertDocument): void => {
+  if (canAccessAcrossOrganizations(req.user?.role)) return;
+
+  const actorId = req.user?.id;
+  if (!actorId) {
+    throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+  }
+
+  const alertOwnerId = alert.farmerId?.toString();
+  const alertOrgId = alert.organizationId?.toString();
+  const actorOrgId = req.user?.orgId;
+
+  if (hasPrivilegedRole(req.user?.role)) {
+    if (alertOrgId && actorOrgId && alertOrgId !== actorOrgId) {
+      throw new AppError('Access denied to weather alert outside your organization scope', 403, 'FORBIDDEN');
+    }
+    return;
+  }
+
+  if (alertOwnerId !== actorId) {
+    throw new AppError('Access denied to weather alert', 403, 'FORBIDDEN');
+  }
+
+  if (alertOrgId && actorOrgId && alertOrgId !== actorOrgId) {
+    throw new AppError('Access denied to weather alert outside your organization scope', 403, 'FORBIDDEN');
+  }
+};
+
+const resolveRequestedRuleStatus = (
+  payload: Record<string, unknown>,
+  fallback: RuleLifecycleStatus
+): RuleLifecycleStatus => {
+  const explicitStatus = toNullableString(payload.status) ?? toNullableString(payload.uiStatus);
+  if (explicitStatus && Object.values(RuleLifecycleStatus).includes(explicitStatus as RuleLifecycleStatus)) {
+    return explicitStatus as RuleLifecycleStatus;
+  }
+
+  const active = payload.active ?? payload.isActive;
+  if (typeof active === 'boolean') {
+    return active ? RuleLifecycleStatus.ACTIVE : RuleLifecycleStatus.DISABLED;
+  }
+
+  return fallback;
+};
+
+const assertRuleStatusTransition = (
+  currentStatus: RuleLifecycleStatus,
+  nextStatus: RuleLifecycleStatus
+): void => {
+  if (!ruleStatusTransitions[currentStatus].includes(nextStatus)) {
+    throw new AppError(
+      `Invalid weather rule status transition: ${currentStatus} -> ${nextStatus}`,
+      400,
+      'BAD_REQUEST'
+    );
+  }
 };
 
 const validateSensorStatusTransition = (
@@ -97,11 +247,20 @@ export async function createProfile(req: AuthRequest, res: Response, next: NextF
   try {
     const userId = req.user!.id;
     const input: ICreateProfileInput = req.body;
+    const actorOrgId = req.user?.orgId;
+
+    const requestedOrgId = toNullableString(input.organizationId);
+    if (requestedOrgId && !canAccessAcrossOrganizations(req.user?.role)) {
+      if (!actorOrgId || requestedOrgId !== actorOrgId) {
+        throw new AppError('Cannot create weather profile outside your organization context', 403, 'FORBIDDEN');
+      }
+    }
+    const scopedOrganizationId = requestedOrgId ?? actorOrgId;
 
     const profile = await FarmWeatherProfile.create({
       farmId:         new mongoose.Types.ObjectId(input.farmId),
       farmerId:       new mongoose.Types.ObjectId(userId),
-      organizationId: input.organizationId ? new mongoose.Types.ObjectId(input.organizationId) : null,
+      organizationId: scopedOrganizationId ? new mongoose.Types.ObjectId(scopedOrganizationId) : null,
       farmName:       input.farmName,
       geoLocation:    { type: 'Point', coordinates: [input.lng, input.lat] },
       altitude:       input.altitude ?? null,
@@ -143,10 +302,71 @@ export async function getMyProfiles(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+export async function listProfiles(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.user?.id) {
+      throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+    }
+
+    const { page, limit, sortBy, sortOrder } = PaginationUtil.getPaginationParams(req.query);
+    const skip = PaginationUtil.getSkip(page, limit);
+    const allowedSortFields = new Set(['createdAt', 'updatedAt', 'farmName', 'timezone']);
+    const resolvedSortBy = allowedSortFields.has(sortBy) ? sortBy : 'createdAt';
+    const sort = PaginationUtil.getSortObject(resolvedSortBy, sortOrder);
+
+    const actorRole = req.user.role;
+    const actorId = req.user.id;
+    const actorOrgId = req.user.orgId;
+    const requestedOrgId = toNullableString(req.query.organizationId);
+
+    const filter: Record<string, unknown> = { isActive: true };
+
+    if (requestedOrgId) {
+      if (!canAccessAcrossOrganizations(actorRole) && (!actorOrgId || requestedOrgId !== actorOrgId)) {
+        throw new AppError('Cannot list weather profiles outside your organization context', 403, 'FORBIDDEN');
+      }
+      filter.organizationId = new mongoose.Types.ObjectId(requestedOrgId);
+    } else if (!canAccessAcrossOrganizations(actorRole) && actorOrgId) {
+      filter.organizationId = new mongoose.Types.ObjectId(actorOrgId);
+    }
+
+    if (hasPrivilegedRole(actorRole)) {
+      const requestedFarmerId = toNullableString(req.query.farmerId);
+      if (requestedFarmerId) {
+        filter.farmerId = new mongoose.Types.ObjectId(requestedFarmerId);
+      }
+    } else {
+      filter.farmerId = new mongoose.Types.ObjectId(actorId);
+    }
+
+    const requestedFarmId = toNullableString(req.query.farmId);
+    if (requestedFarmId) {
+      filter.farmId = new mongoose.Types.ObjectId(requestedFarmId);
+    }
+
+    const search = toNullableString(req.query.search);
+    if (search) {
+      filter.farmName = { $regex: search, $options: 'i' };
+    }
+
+    const [profiles, total] = await Promise.all([
+      FarmWeatherProfile.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      FarmWeatherProfile.countDocuments(filter),
+    ]);
+
+    ResponseHandler.success(res, profiles, 'Profiles retrieved', 200, {
+      pagination: buildPagination(page, limit, total),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getProfileById(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const profile = await FarmWeatherProfile.findById(req.params.id);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
     sendSuccess(res, profile);
   } catch (error) {
     next(error);
@@ -157,6 +377,10 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
   try {
     const userId = req.user!.id;
     const input: IUpdateProfileInput = req.body;
+
+    const profile = await FarmWeatherProfile.findById(req.params.id);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const update: Record<string, unknown> = {};
     if (input.farmName          != null) update.farmName      = input.farmName;
@@ -169,12 +393,8 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
       update.geoLocation = { type: 'Point', coordinates: [input.lng, input.lat] };
     }
 
-    const profile = await FarmWeatherProfile.findByIdAndUpdate(
-      req.params.id,
-      { $set: update },
-      { new: true }
-    );
-    if (!profile) throw new AppError('Profile not found', 404);
+    profile.set(update);
+    await profile.save();
 
     await auditService.log({
       userId,
@@ -199,12 +419,12 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
 export async function deleteProfile(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
-    const profile = await FarmWeatherProfile.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isActive: false, deletedAt: new Date() } },
-      { new: true }
-    );
+    const profile = await FarmWeatherProfile.findById(req.params.id);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+    profile.isActive = false;
+    profile.deletedAt = new Date();
+    await profile.save();
 
     await auditService.log({
       userId,
@@ -368,6 +588,7 @@ export async function getLatestForecast(req: AuthRequest, res: Response, next: N
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const horizon = (req.query.horizon as ForecastHorizon) ?? ForecastHorizon.DAILY;
     const forecast = await weatherForecastService.getLatestForecast(profile.farmId.toString(), horizon);
@@ -381,6 +602,7 @@ export async function getForecastSummary(req: AuthRequest, res: Response, next: 
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const summary = await weatherForecastService.getForecastSummary(profile.farmId.toString());
     sendSuccess(res, summary, 'Forecast summary');
@@ -393,6 +615,7 @@ export async function getRiskForecast(req: AuthRequest, res: Response, next: Nex
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const horizon = (req.query.horizon as ForecastHorizon) ?? ForecastHorizon.DAILY;
     const risk = await weatherForecastService.getRiskForecast(profile.farmId.toString(), horizon);
@@ -406,6 +629,7 @@ export async function getDashboard(req: AuthRequest, res: Response, next: NextFu
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const data = await weatherForecastService.getDashboardData(profile.farmId.toString());
     sendSuccess(res, data, 'Weather dashboard');
@@ -418,6 +642,7 @@ export async function compareForecastVsActual(req: AuthRequest, res: Response, n
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
 
     const dateStr = req.query.date as string;
     if (!dateStr) throw new AppError('Query param "date" (YYYY-MM-DD) is required', 400);
@@ -431,6 +656,53 @@ export async function compareForecastVsActual(req: AuthRequest, res: Response, n
   }
 }
 
+export async function refreshForecast(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const profile = await FarmWeatherProfile.findById(req.params.profileId);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    const result = await weatherIngestService.manualRefresh(req.params.profileId);
+    sendSuccess(res, result, 'Profile forecast refresh triggered');
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getForecastHistory(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const profile = await FarmWeatherProfile.findById(req.params.profileId);
+    if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    const { page, limit, sortBy, sortOrder } = PaginationUtil.getPaginationParams(req.query);
+    const skip = PaginationUtil.getSkip(page, limit);
+    const allowedSortFields = new Set(['createdAt', 'fetchedAt', 'expiresAt', 'forecastPeriodStart']);
+    const resolvedSortBy = allowedSortFields.has(sortBy) ? sortBy : 'fetchedAt';
+    const sort = PaginationUtil.getSortObject(resolvedSortBy, sortOrder);
+
+    const filter: Record<string, unknown> = { farmId: profile.farmId };
+    const horizon = toNullableString(req.query.horizon);
+    if (horizon && Object.values(ForecastHorizon).includes(horizon as ForecastHorizon)) {
+      filter.horizon = horizon;
+    }
+    if (req.query.includeSuperseded === 'false') {
+      filter.isSuperseded = false;
+    }
+
+    const [history, total] = await Promise.all([
+      Forecast.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      Forecast.countDocuments(filter),
+    ]);
+
+    ResponseHandler.success(res, history, 'Forecast history', 200, {
+      pagination: buildPagination(page, limit, total),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
 // Alerts
 // ============================================================================
@@ -439,15 +711,27 @@ export async function listAlerts(req: AuthRequest, res: Response, next: NextFunc
   try {
     const profile = await FarmWeatherProfile.findById(req.params.profileId);
     if (!profile) throw new AppError('Profile not found', 404);
+    assertCanAccessProfile(req, profile);
+
+    const uiStatusQuery = toNullableString(req.query.uiStatus);
+    const uiStatuses = Object.values(AlertUiStatus);
+    const requestedUiStatus = uiStatusQuery && uiStatuses.includes(uiStatusQuery as AlertUiStatus)
+      ? (uiStatusQuery as AlertUiStatus)
+      : undefined;
+    const requestedStatus = toNullableString(req.query.status) as AlertStatus | undefined;
 
     const result = await weatherAlertService.listAlerts(profile.farmId.toString(), {
-      status:    req.query.status    as AlertStatus,
+      status:    requestedStatus,
+      uiStatus:  requestedUiStatus,
       severity:  req.query.severity  as AlertSeverity,
       alertType: req.query.alertType as AlertType,
       page:      parseInt(req.query.page  as string ?? '1', 10),
       limit:     parseInt(req.query.limit as string ?? '20', 10),
     });
-    sendSuccess(res, result, 'Alerts retrieved');
+    const alerts = result.data.map((alert) => withAlertStatus(alert));
+    ResponseHandler.success(res, alerts, 'Alerts retrieved', 200, {
+      pagination: result.pagination,
+    });
   } catch (error) {
     next(error);
   }
@@ -456,7 +740,8 @@ export async function listAlerts(req: AuthRequest, res: Response, next: NextFunc
 export async function getAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const alert = await weatherAlertService.getAlert(req.params.id);
-    sendSuccess(res, alert);
+    assertCanAccessAlert(req, alert);
+    sendSuccess(res, withAlertStatus(alert), 'Alert retrieved');
   } catch (error) {
     next(error);
   }
@@ -465,8 +750,10 @@ export async function getAlert(req: AuthRequest, res: Response, next: NextFuncti
 export async function acknowledgeAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
+    const existing = await weatherAlertService.getAlert(req.params.id);
+    assertCanAccessAlert(req, existing);
     const alert = await weatherAlertService.acknowledgeAlert(req.params.id, userId);
-    sendSuccess(res, alert, 'Alert acknowledged');
+    sendSuccess(res, withAlertStatus(alert), 'Alert acknowledged');
   } catch (error) {
     next(error);
   }
@@ -475,8 +762,11 @@ export async function acknowledgeAlert(req: AuthRequest, res: Response, next: Ne
 export async function dismissAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
-    const alert = await weatherAlertService.dismissAlert(req.params.id, userId);
-    sendSuccess(res, alert, 'Alert dismissed');
+    const existing = await weatherAlertService.getAlert(req.params.id);
+    assertCanAccessAlert(req, existing);
+    const reason = toNullableString(req.body.reason);
+    const alert = await weatherAlertService.dismissAlert(req.params.id, userId, reason);
+    sendSuccess(res, withAlertStatus(alert), 'Alert dismissed');
   } catch (error) {
     next(error);
   }
@@ -485,13 +775,16 @@ export async function dismissAlert(req: AuthRequest, res: Response, next: NextFu
 export async function escalateAlert(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
+    const existing = await weatherAlertService.getAlert(req.params.id);
+    assertCanAccessAlert(req, existing);
     const alert = await weatherAlertService.escalateAlert(
       req.params.id,
       userId,
       req.body.reason,
       req.body.severity as AlertSeverity | undefined
     );
-    sendSuccess(res, alert, 'Alert escalated');
+    const mappedAlert = withAlertStatus(alert);
+    sendSuccess(res, { ...mappedAlert, reason: req.body.reason ?? mappedAlert.reason }, 'Alert escalated');
   } catch (error) {
     next(error);
   }
@@ -500,13 +793,26 @@ export async function escalateAlert(req: AuthRequest, res: Response, next: NextF
 export async function getOrgAlerts(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.params.orgId;
+    assertOrgScopeAccess(req, orgId);
+
+    const uiStatusQuery = toNullableString(req.query.uiStatus);
+    const uiStatuses = Object.values(AlertUiStatus);
+    const requestedUiStatus = uiStatusQuery && uiStatuses.includes(uiStatusQuery as AlertUiStatus)
+      ? (uiStatusQuery as AlertUiStatus)
+      : undefined;
+    const requestedStatus = toNullableString(req.query.status) as AlertStatus | undefined;
+
     const result = await weatherAlertService.listOrgAlerts(orgId, {
-      status:   req.query.status   as AlertStatus,
+      status:   requestedStatus,
+      uiStatus: requestedUiStatus,
       severity: req.query.severity as AlertSeverity,
       page:     parseInt(req.query.page  as string ?? '1', 10),
       limit:    parseInt(req.query.limit as string ?? '50', 10),
     });
-    sendSuccess(res, result, 'Organisation alerts');
+    const alerts = result.data.map((alert) => withAlertStatus(alert));
+    ResponseHandler.success(res, alerts, 'Organisation alerts', 200, {
+      pagination: result.pagination,
+    });
   } catch (error) {
     next(error);
   }
@@ -515,6 +821,9 @@ export async function getOrgAlerts(req: AuthRequest, res: Response, next: NextFu
 export async function getAlertStats(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const orgId = req.query.orgId as string | undefined;
+    if (orgId) {
+      assertOrgScopeAccess(req, orgId);
+    }
     const stats = await weatherAlertService.getAlertStats(orgId);
     sendSuccess(res, stats, 'Alert statistics');
   } catch (error) {
@@ -530,12 +839,73 @@ export async function listRules(req: AuthRequest, res: Response, next: NextFunct
   try {
     const { page, limit, sortBy, sortOrder } = PaginationUtil.getPaginationParams(req.query);
     const skip = PaginationUtil.getSkip(page, limit);
-    const sort = PaginationUtil.getSortObject(sortBy || 'priority', sortOrder || 'desc');
+    const allowedSortFields = new Set(['priority', 'createdAt', 'updatedAt', 'name', 'severity']);
+    const resolvedSortBy = allowedSortFields.has(sortBy) ? sortBy : 'priority';
+    const sort = PaginationUtil.getSortObject(resolvedSortBy, sortOrder || 'desc');
+
+    const actorRole = req.user?.role;
+    const actorOrgId = req.user?.orgId;
+    const requestedOrgId = toNullableString(req.query.organizationId);
+    if (requestedOrgId && !canAccessAcrossOrganizations(actorRole) && (!actorOrgId || requestedOrgId !== actorOrgId)) {
+      throw new AppError('Cannot list weather rules outside your organization context', 403, 'FORBIDDEN');
+    }
+
+    const statusFilter = toNullableString(req.query.status) ?? RuleLifecycleStatus.ACTIVE;
+    const filter: Record<string, unknown> = {};
+
+    if (statusFilter !== 'all') {
+      if (!Object.values(RuleLifecycleStatus).includes(statusFilter as RuleLifecycleStatus)) {
+        throw new AppError('Invalid weather rule status filter', 400, 'BAD_REQUEST');
+      }
+
+      if (statusFilter === RuleLifecycleStatus.ACTIVE) {
+        filter.$or = [
+          { workflowState: RuleLifecycleStatus.ACTIVE },
+          { workflowState: { $exists: false }, isActive: true },
+        ];
+      } else if (statusFilter === RuleLifecycleStatus.DISABLED) {
+        filter.$or = [
+          { workflowState: RuleLifecycleStatus.DISABLED },
+          { workflowState: { $exists: false }, isActive: false },
+        ];
+      } else {
+        filter.workflowState = RuleLifecycleStatus.DRAFT;
+      }
+    }
+
+    if (requestedOrgId) {
+      filter.organizationId = new mongoose.Types.ObjectId(requestedOrgId);
+    } else if (!canAccessAcrossOrganizations(actorRole) && actorOrgId) {
+      filter.$and = [
+        ...(Array.isArray(filter.$and) ? filter.$and : []),
+        {
+          $or: [
+            { organizationId: null },
+            { organizationId: new mongoose.Types.ObjectId(actorOrgId) },
+          ],
+        },
+      ];
+    }
+
+    const severityFilter = toNullableString(req.query.severity);
+    if (severityFilter) {
+      filter.severity = severityFilter;
+    }
+
     const [data, total] = await Promise.all([
-      WeatherRule.find({ isActive: true }).sort(sort).skip(skip).limit(limit).lean(),
-      WeatherRule.countDocuments({ isActive: true }),
+      WeatherRule.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+      WeatherRule.countDocuments(filter),
     ]);
-    sendSuccess(res, PaginationUtil.buildPaginationResult(data, total, page, limit), 'Rules retrieved');
+
+    ResponseHandler.success(
+      res,
+      data.map((rule) => withRuleStatus(rule)),
+      'Rules retrieved',
+      200,
+      {
+        pagination: buildPagination(page, limit, total),
+      }
+    );
   } catch (error) {
     next(error);
   }
@@ -545,7 +915,20 @@ export async function getRuleById(req: AuthRequest, res: Response, next: NextFun
   try {
     const rule = await WeatherRule.findById(req.params.id);
     if (!rule) throw new AppError('Rule not found', 404);
-    sendSuccess(res, rule);
+    const actorOrgId = req.user?.orgId;
+    const role = req.user?.role;
+    const ruleOrgId = rule.organizationId?.toString();
+
+    if (!canAccessAcrossOrganizations(role)) {
+      if (ruleOrgId && actorOrgId && ruleOrgId !== actorOrgId) {
+        throw new AppError('Access denied to weather rule', 403, 'FORBIDDEN');
+      }
+      if (ruleOrgId && !actorOrgId) {
+        throw new AppError('Access denied to organization weather rule', 403, 'FORBIDDEN');
+      }
+    }
+
+    sendSuccess(res, withRuleStatus(rule), 'Rule retrieved');
   } catch (error) {
     next(error);
   }
@@ -555,13 +938,21 @@ export async function createRule(req: AuthRequest, res: Response, next: NextFunc
   try {
     const userId = req.user!.id;
     const input: ICreateRuleInput = req.body;
+    const payload = req.body as Record<string, unknown>;
+    const workflowState = resolveRequestedRuleStatus(payload, RuleLifecycleStatus.ACTIVE);
+    const requestedOrgId = toNullableString(payload.organizationId) ?? req.user?.orgId;
+
+    if (requestedOrgId && !canAccessAcrossOrganizations(req.user?.role) && (!req.user?.orgId || requestedOrgId !== req.user.orgId)) {
+      throw new AppError('Cannot create weather rule outside your organization context', 403, 'FORBIDDEN');
+    }
 
     const rule = await WeatherRule.create({
       ...input,
-      organizationId: input.organizationId ? new mongoose.Types.ObjectId(input.organizationId) : null,
+      organizationId: requestedOrgId ? new mongoose.Types.ObjectId(requestedOrgId) : null,
       createdBy: new mongoose.Types.ObjectId(userId),
       version:   1,
-      isActive:  true,
+      workflowState,
+      isActive: workflowState === RuleLifecycleStatus.ACTIVE,
       priority:  input.priority ?? 50,
     });
 
@@ -573,7 +964,7 @@ export async function createRule(req: AuthRequest, res: Response, next: NextFunc
       status:     'success',
     });
 
-    sendSuccess(res, rule, 'Weather rule created', 201);
+    sendSuccess(res, withRuleStatus(rule), 'Weather rule created', 201);
   } catch (error) {
     next(error);
   }
@@ -583,13 +974,44 @@ export async function updateRule(req: AuthRequest, res: Response, next: NextFunc
   try {
     const userId = req.user!.id;
     const input: IUpdateRuleInput = req.body;
-
-    const rule = await WeatherRule.findByIdAndUpdate(
-      req.params.id,
-      { $set: { ...input, updatedBy: new mongoose.Types.ObjectId(userId) }, $inc: { version: 1 } },
-      { new: true }
-    );
+    const payload = req.body as Record<string, unknown>;
+    const rule = await WeatherRule.findById(req.params.id);
     if (!rule) throw new AppError('Rule not found', 404);
+
+    const actorOrgId = req.user?.orgId;
+    const role = req.user?.role;
+    const ruleOrgId = rule.organizationId?.toString();
+
+    if (!canAccessAcrossOrganizations(role)) {
+      if (ruleOrgId && actorOrgId && ruleOrgId !== actorOrgId) {
+        throw new AppError('Access denied to weather rule', 403, 'FORBIDDEN');
+      }
+      if (ruleOrgId && !actorOrgId) {
+        throw new AppError('Access denied to organization weather rule', 403, 'FORBIDDEN');
+      }
+    }
+
+    const currentStatus = resolveRuleStatus(rule as unknown as Record<string, unknown>);
+    const requestedStatus = resolveRequestedRuleStatus(payload, currentStatus);
+    assertRuleStatusTransition(currentStatus, requestedStatus);
+
+    const update: Record<string, unknown> = {
+      ...input,
+      updatedBy: new mongoose.Types.ObjectId(userId),
+    };
+
+    delete update.status;
+    delete update.uiStatus;
+    delete update.active;
+
+    rule.set(update);
+    rule.workflowState = requestedStatus;
+    rule.isActive = requestedStatus === RuleLifecycleStatus.ACTIVE;
+    if (requestedStatus !== RuleLifecycleStatus.DISABLED) {
+      rule.deletedAt = undefined;
+    }
+    rule.version += 1;
+    await rule.save();
 
     await auditService.log({
       userId,
@@ -599,7 +1021,7 @@ export async function updateRule(req: AuthRequest, res: Response, next: NextFunc
       status:     'success',
     });
 
-    sendSuccess(res, rule, 'Rule updated');
+    sendSuccess(res, withRuleStatus(rule), 'Rule updated');
   } catch (error) {
     next(error);
   }
@@ -608,12 +1030,27 @@ export async function updateRule(req: AuthRequest, res: Response, next: NextFunc
 export async function deleteRule(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.id;
-    const rule = await WeatherRule.findByIdAndUpdate(
-      req.params.id,
-      { $set: { isActive: false, deletedAt: new Date(), updatedBy: new mongoose.Types.ObjectId(userId) } },
-      { new: true }
-    );
+    const rule = await WeatherRule.findById(req.params.id);
     if (!rule) throw new AppError('Rule not found', 404);
+
+    const actorOrgId = req.user?.orgId;
+    const role = req.user?.role;
+    const ruleOrgId = rule.organizationId?.toString();
+    if (!canAccessAcrossOrganizations(role)) {
+      if (ruleOrgId && actorOrgId && ruleOrgId !== actorOrgId) {
+        throw new AppError('Access denied to weather rule', 403, 'FORBIDDEN');
+      }
+      if (ruleOrgId && !actorOrgId) {
+        throw new AppError('Access denied to organization weather rule', 403, 'FORBIDDEN');
+      }
+    }
+
+    rule.isActive = false;
+    rule.workflowState = RuleLifecycleStatus.DISABLED;
+    rule.deletedAt = new Date();
+    rule.updatedBy = new mongoose.Types.ObjectId(userId);
+    rule.version += 1;
+    await rule.save();
 
     await auditService.log({
       userId,
@@ -694,6 +1131,67 @@ export async function getProviderStatus(_req: Request, res: Response, next: Next
   try {
     const providers = weatherProviderService.getProviderNames();
     sendSuccess(res, { providers }, 'Provider status');
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function testRule(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const rule = await WeatherRule.findById(req.params.id);
+    if (!rule) throw new AppError('Rule not found', 404);
+
+    const actorOrgId = req.user?.orgId;
+    if (!canAccessAcrossOrganizations(req.user?.role)) {
+      const ruleOrgId = rule.organizationId?.toString();
+      if (ruleOrgId && actorOrgId && ruleOrgId !== actorOrgId) {
+        throw new AppError('Access denied to weather rule', 403, 'FORBIDDEN');
+      }
+      if (ruleOrgId && !actorOrgId) {
+        throw new AppError('Access denied to organization weather rule', 403, 'FORBIDDEN');
+      }
+    }
+
+    let reading: IWeatherReading | undefined;
+    let readingSource: 'payload' | 'latest_snapshot' = 'payload';
+    let profileId: string | undefined;
+
+    if (req.body.reading && typeof req.body.reading === 'object') {
+      reading = req.body.reading as IWeatherReading;
+    } else {
+      const requestedProfileId = toNullableString(req.body.profileId) ?? toNullableString(req.query.profileId);
+      if (!requestedProfileId) {
+        throw new AppError('Provide reading payload or profileId when testing weather rules', 400, 'BAD_REQUEST');
+      }
+
+      const profile = await FarmWeatherProfile.findById(requestedProfileId);
+      if (!profile) throw new AppError('Profile not found', 404);
+      assertCanAccessProfile(req, profile);
+      profileId = profile._id.toString();
+
+      const latestSnapshot = await WeatherSnapshot.findOne({ farmId: profile.farmId }).sort({ timestamp: -1 }).lean();
+      if (!latestSnapshot) {
+        throw new AppError('No weather snapshot available for selected profile', 400, 'BAD_REQUEST');
+      }
+
+      reading = latestSnapshot.reading as IWeatherReading;
+      readingSource = 'latest_snapshot';
+    }
+
+    const matched = weatherRulesService.evaluateRule(rule, reading);
+
+    sendSuccess(
+      res,
+      {
+        rule: withRuleStatus(rule),
+        matched,
+        readingSource,
+        profileId,
+        reading,
+        evaluatedAt: new Date().toISOString(),
+      },
+      matched ? 'Weather rule matched reading' : 'Weather rule test completed'
+    );
   } catch (error) {
     next(error);
   }

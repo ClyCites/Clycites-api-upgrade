@@ -1,0 +1,84 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+  push:
+    branches: [ staging, master ]
+    paths:
+      - 'src/**'
+      - '.github/workflows/deploy.yml'
+      - 'package.json'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        id: config
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.AWS_ROLE_TO_ASSUME }}" ] && [ -n "${{ vars.AWS_REGION }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Deployment configuration found."
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Missing AWS_ROLE_TO_ASSUME secret or AWS_REGION variable."
+          fi
+      
+      - name: Configure AWS credentials
+        if: ${{ steps.config.outputs.configured == 'true' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+      
+      - name: Deploy to AWS
+        if: ${{ steps.config.outputs.configured == 'true' }}
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ENVIRONMENT: ${{ github.event.inputs.environment || 'staging' }}
+        run: |
+          echo "Deploying to $ENVIRONMENT environment..."
+          # Add your deployment commands here
+          # Example: aws ecs update-service ...
+      
+      - name: Verify deployment
+        if: ${{ steps.config.outputs.configured == 'true' }}
+        run: |
+          echo "Verifying deployment health..."
+          # Add your health check commands here
+
+      - name: Skip deployment due to missing configuration
+        if: ${{ steps.config.outputs.configured != 'true' }}
+        run: |
+          echo "Deployment skipped: configure AWS_ROLE_TO_ASSUME secret and AWS_REGION variable."
+      
+      - name: Post deployment notification
+        if: ${{ always() && secrets.SLACK_WEBHOOK != '' }}
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Deployment to ${{ github.event.inputs.environment || "staging" }} ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,branch,author
+        continue-on-error: true

@@ -99,11 +99,40 @@ export const expertPortalPaths: Record<string, unknown> = {
   '/api/v1/expert-portal/cases': {
     get: {
       tags: ['Expert Portal'],
-      summary: 'List all cases (expert / admin)',
+      summary: 'List all field/legacy cases',
       operationId: 'listAllCases',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'assigned', 'in_review', 'submitted', 'escalated', 'closed'] } }],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'source', in: 'query', schema: { type: 'string', enum: ['all', 'field', 'legacy'], default: 'all' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['created', 'assigned', 'in_visit', 'resolved', 'closed', 'pending', 'in_review', 'escalated', 'reviewed'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['created', 'assigned', 'in_visit', 'resolved', 'closed'] } },
+      ],
       responses: { 200: { description: 'Cases.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Create a field case',
+      operationId: 'createFieldCase',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['title', 'description'],
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          region: { type: 'string' },
+          cropType: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          expertId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          source: { type: 'string', enum: ['workspace', 'inquiry', 'ai_report'] },
+          reportId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          inquiryId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: { 201: { description: 'Field case created.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' } },
     },
   },
 
@@ -142,16 +171,71 @@ export const expertPortalPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/expert-portal/cases/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get case detail',
+      operationId: 'getCaseDetail',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Case details.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Expert Portal'],
+      summary: 'Update field case',
+      description: 'Supports status transition validation and returns `400` on invalid transitions.',
+      operationId: 'updateFieldCase',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          region: { type: 'string' },
+          cropType: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          expertId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          status: { type: 'string', enum: ['created', 'assigned', 'in_visit', 'resolved', 'closed'] },
+          resolution: { type: 'string' },
+          closeReason: { type: 'string' },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: { 200: { description: 'Case updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+    delete: {
+      tags: ['Expert Portal'],
+      summary: 'Delete field case',
+      operationId: 'deleteFieldCase',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Field case deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
   '/api/v1/expert-portal/cases/{id}/assign': {
     post: {
       tags: ['Expert Portal', 'Admin'],
       summary: 'Assign case to an expert',
-      description: '`platform_admin` only.',
+      description: 'Assigns either field-case resources or legacy case-review records.',
       operationId: 'assignCase',
       security: auth,
       parameters: [idParam],
       requestBody: r({ type: 'object', required: ['expertId'], properties: { expertId: { type: 'string', pattern: '^[a-f0-9]{24}$' } } }),
       responses: { 200: { description: 'Case assigned.' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/cases/{id}/assign-self': {
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Self-assign case to current expert',
+      operationId: 'assignCaseSelf',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Case self-assigned.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -175,6 +259,18 @@ export const expertPortalPaths: Record<string, unknown> = {
       parameters: [idParam],
       requestBody: r({ type: 'object', required: ['diagnosis', 'recommendations'], properties: { diagnosis: { type: 'string' }, recommendations: { type: 'array', items: { type: 'string' } }, confidence: { type: 'number', minimum: 0, maximum: 1 }, treatmentPlan: { type: 'string' }, notes: { type: 'string' } } }),
       responses: { 200: { description: 'Review submitted.' }, 400: { $ref: '#/components/responses/ValidationError' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+  },
+
+  '/api/v1/expert-portal/cases/{id}/close': {
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Close a case',
+      operationId: 'closeCase',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { reason: { type: 'string' }, closeReason: { type: 'string' } } }),
+      responses: { 200: { description: 'Case closed.' }, 400: { $ref: '#/components/responses/ValidationError' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 
@@ -202,6 +298,165 @@ export const expertPortalPaths: Record<string, unknown> = {
     },
   },
 
+  '/api/v1/expert-portal/assignments': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'List dedicated assignments',
+      operationId: 'listAssignments',
+      security: auth,
+      parameters: [pageParam, limitParam, { name: 'expertId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['created', 'assigned', 'completed', 'cancelled'] } }],
+      responses: { 200: { description: 'Assignments list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/expert-portal/assignments/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get assignment by ID',
+      operationId: 'getAssignment',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Assignment detail.' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Expert Portal'],
+      summary: 'Update assignment metadata or status',
+      description: 'Supports assignment status transition validation and returns `400` on invalid transitions.',
+      operationId: 'updateAssignment',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { expertId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, status: { type: 'string', enum: ['created', 'assigned', 'completed', 'cancelled'] }, notes: { type: 'string' }, metadata: { type: 'object', additionalProperties: true } } }),
+      responses: { 200: { description: 'Assignment updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/review-queue': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'List dedicated review queue',
+      operationId: 'listReviewQueue',
+      security: auth,
+      parameters: [pageParam, limitParam, { name: 'itemType', in: 'query', schema: { type: 'string', enum: ['advisory', 'knowledge', 'field_case', 'research_report'] } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['queued', 'in_review', 'approved', 'rejected'] } }],
+      responses: { 200: { description: 'Review queue list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/expert-portal/review-queue/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get review queue item',
+      operationId: 'getReviewQueueItem',
+      security: auth,
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'advisory:507f1f77bcf86cd799439011' } }],
+      responses: { 200: { description: 'Queue item detail.' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/review-queue/{id}/approve': {
+    post: {
+      tags: ['Expert Portal', 'Admin'],
+      summary: 'Approve review queue item',
+      operationId: 'approveReviewQueueItem',
+      security: auth,
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'knowledge:507f1f77bcf86cd799439011' } }],
+      requestBody: r({ type: 'object', properties: { reason: { type: 'string' } } }),
+      responses: { 200: { description: 'Queue item approved.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/review-queue/{id}/reject': {
+    post: {
+      tags: ['Expert Portal', 'Admin'],
+      summary: 'Reject review queue item',
+      operationId: 'rejectReviewQueueItem',
+      security: auth,
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', example: 'field_case:507f1f77bcf86cd799439011' } }],
+      requestBody: r({ type: 'object', properties: { reason: { type: 'string' }, note: { type: 'string' } } }),
+      responses: { 200: { description: 'Queue item rejected.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/research-reports': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'List research reports',
+      operationId: 'listResearchReports',
+      security: auth,
+      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'in_review', 'published', 'archived'] } }, { name: 'relatedCaseId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } }],
+      responses: { 200: { description: 'Research report list.' }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Create research report',
+      operationId: 'createResearchReport',
+      security: auth,
+      requestBody: r({ type: 'object', required: ['title', 'content'], properties: { title: { type: 'string' }, summary: { type: 'string' }, content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, relatedCaseId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, status: { type: 'string', enum: ['draft', 'in_review', 'published', 'archived'] } } }),
+      responses: { 201: { description: 'Research report created.' }, 400: { $ref: '#/components/responses/ValidationError' } },
+    },
+  },
+
+  '/api/v1/expert-portal/research-reports/{id}': {
+    get: {
+      tags: ['Expert Portal'],
+      summary: 'Get research report',
+      operationId: 'getResearchReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Research report.' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    patch: {
+      tags: ['Expert Portal'],
+      summary: 'Update research report',
+      description: 'Supports status transition validation and returns `400` on invalid transitions.',
+      operationId: 'updateResearchReport',
+      security: auth,
+      parameters: [idParam],
+      requestBody: r({ type: 'object', properties: { title: { type: 'string' }, summary: { type: 'string' }, content: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } }, relatedCaseId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, status: { type: 'string', enum: ['draft', 'in_review', 'published', 'archived'] }, metadata: { type: 'object', additionalProperties: true } } }),
+      responses: { 200: { description: 'Research report updated.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+    delete: {
+      tags: ['Expert Portal'],
+      summary: 'Delete research report',
+      operationId: 'deleteResearchReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Research report deleted.' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/research-reports/{id}/submit': {
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Submit research report for review',
+      operationId: 'submitResearchReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Report submitted.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/research-reports/{id}/publish': {
+    post: {
+      tags: ['Expert Portal', 'Admin'],
+      summary: 'Publish research report',
+      operationId: 'publishResearchReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Report published.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
+  '/api/v1/expert-portal/research-reports/{id}/archive': {
+    post: {
+      tags: ['Expert Portal'],
+      summary: 'Archive research report',
+      operationId: 'archiveResearchReport',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Report archived.' }, 400: { $ref: '#/components/responses/ValidationError' }, 404: { $ref: '#/components/responses/NotFound' } },
+    },
+  },
+
   // ── Knowledge Base ─────────────────────────────────────────────────────────────
 
   '/api/v1/expert-portal/knowledge': {
@@ -209,7 +464,7 @@ export const expertPortalPaths: Record<string, unknown> = {
       tags: ['Expert Portal'],
       summary: 'Search / browse knowledge articles',
       operationId: 'searchKnowledgeArticles',
-      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'cropType', in: 'query', schema: { type: 'string' } }, { name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'published'] } }],
+      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'cropType', in: 'query', schema: { type: 'string' } }, { name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'under_review', 'approved', 'rejected', 'published', 'archived'] } }],
       responses: { 200: { description: 'Articles.' } },
     },
     post: {
@@ -233,11 +488,20 @@ export const expertPortalPaths: Record<string, unknown> = {
     patch: {
       tags: ['Expert Portal'],
       summary: 'Update knowledge article',
+      description: 'Supports status transition validation and returns `400` on invalid transitions.',
       operationId: 'updateKnowledgeArticle',
       security: auth,
       parameters: [idParam],
-      requestBody: r({ type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' }, status: { type: 'string', enum: ['draft', 'published'] } } }),
+      requestBody: r({ type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' }, status: { type: 'string', enum: ['draft', 'under_review', 'approved', 'rejected', 'published', 'archived'] } } }),
       responses: { 200: { description: 'Updated.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
+    },
+    delete: {
+      tags: ['Expert Portal'],
+      summary: 'Delete (archive) knowledge article',
+      operationId: 'deleteKnowledgeArticle',
+      security: auth,
+      parameters: [idParam],
+      responses: { 200: { description: 'Article deleted.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
 
@@ -341,7 +605,14 @@ export const expertPortalPaths: Record<string, unknown> = {
       summary: 'List advisories (expert / admin)',
       operationId: 'listAdvisories',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'urgency', in: 'query', schema: { type: 'string', enum: ['info', 'warning', 'critical'] } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'submitted', 'approved', 'rejected', 'scheduled', 'sent', 'cancelled'] } }],
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'category', in: 'query', schema: { type: 'string' } },
+        { name: 'urgency', in: 'query', schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical', 'emergency'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'submitted', 'approved', 'rejected', 'scheduled', 'sent', 'cancelled'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['draft', 'in_review', 'approved', 'rejected', 'published', 'acknowledged'] } },
+      ],
       responses: { 200: { description: 'Advisories.' }, 401: { $ref: '#/components/responses/Unauthorized' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },

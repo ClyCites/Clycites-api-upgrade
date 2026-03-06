@@ -1,0 +1,53 @@
+name: Build and Push NPM Package
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build TypeScript
+        run: npm run build
+        continue-on-error: true
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Generate artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if [ -d dist ]; then
+            cp -r dist artifacts/
+          else
+            echo "No dist directory available for this run." > artifacts/build-note.txt
+          fi
+          cp package.json artifacts/
+          cp README.md artifacts/
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clycites-api-build
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7

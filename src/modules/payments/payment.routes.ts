@@ -105,6 +105,71 @@ router.post(
 );
 
 /**
+ * @route   GET /api/payments/payouts
+ * @desc    List payouts
+ * @access  Authenticated users
+ * @query   page, limit, status, method
+ */
+router.get('/payouts', authenticate, paymentController.listPayouts);
+
+/**
+ * @route   POST /api/payments/payouts
+ * @desc    Create payout request
+ * @access  Authenticated users
+ */
+router.post(
+  '/payouts',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 180 }),
+  paymentController.createPayout
+);
+
+/**
+ * @route   GET /api/payments/payouts/:payoutId
+ * @desc    Get payout details
+ * @access  Authenticated users
+ */
+router.get('/payouts/:payoutId', authenticate, paymentController.getPayout);
+
+/**
+ * @route   PATCH /api/payments/payouts/:payoutId
+ * @desc    Update payout
+ * @access  Authenticated users
+ */
+router.patch('/payouts/:payoutId', authenticate, paymentController.updatePayout);
+
+/**
+ * @route   DELETE /api/payments/payouts/:payoutId
+ * @desc    Delete payout
+ * @access  Authenticated users
+ */
+router.delete('/payouts/:payoutId', authenticate, paymentController.deletePayout);
+
+/**
+ * @route   POST /api/payments/payouts/:payoutId/approve
+ * @desc    Approve payout
+ * @access  Authenticated users
+ */
+router.post(
+  '/payouts/:payoutId/approve',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 120 }),
+  paymentController.approvePayout
+);
+
+/**
+ * @route   POST /api/payments/payouts/:payoutId/fail
+ * @desc    Mark payout as failed
+ * @access  Authenticated users
+ */
+router.post(
+  '/payouts/:payoutId/fail',
+  authenticate,
+  enforceIdempotency({ ttlMinutes: 120 }),
+  paymentController.failPayout
+);
+
+/**
  * @route   POST /api/payments/webhook/:provider
  * @desc    Payment gateway webhook handler
  * @access  Public (with signature verification)

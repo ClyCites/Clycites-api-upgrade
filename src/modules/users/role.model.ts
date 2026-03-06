@@ -4,6 +4,7 @@ export interface IRole extends Document {
   name: string;
   slug: string;
   description: string;
+  status: 'active' | 'deprecated';
   
   // Permissions
   permissions: mongoose.Types.ObjectId[]; // References to Permission model
@@ -43,6 +44,12 @@ const RoleSchema = new Schema<IRole>(
     description: {
       type: String,
       required: [true, 'Role description is required'],
+    },
+    status: {
+      type: String,
+      enum: ['active', 'deprecated'],
+      default: 'active',
+      index: true,
     },
     permissions: {
       type: [{ type: Schema.Types.ObjectId, ref: 'Permission' }],
@@ -87,6 +94,7 @@ const RoleSchema = new Schema<IRole>(
 RoleSchema.index({ slug: 1, organization: 1 }, { unique: true });
 RoleSchema.index({ name: 1, organization: 1 });
 RoleSchema.index({ scope: 1 });
+RoleSchema.index({ status: 1 });
 RoleSchema.index({ isSystem: 1 });
 RoleSchema.index({ isDefault: 1 });
 RoleSchema.index({ organization: 1 });

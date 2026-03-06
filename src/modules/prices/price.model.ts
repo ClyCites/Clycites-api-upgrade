@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IPrice extends Document {
   product: mongoose.Types.ObjectId;
   market: mongoose.Types.ObjectId;
+  organization?: mongoose.Types.ObjectId;
   addedBy?: mongoose.Types.ObjectId;
   price: number;
   currency: string;
@@ -19,6 +20,9 @@ export interface IPrice extends Document {
   alertTriggered?: boolean;
   historicalPrices?: Array<{ date?: Date; price?: number }>;
   isValid?: boolean;
+  status: 'captured' | 'validated' | 'published';
+  createdBy?: mongoose.Types.ObjectId;
+  isActive: boolean;
   errorLog?: string;
 }
 
@@ -26,7 +30,9 @@ const PriceSchema = new Schema<IPrice>(
   {
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true, index: true },
     market: { type: Schema.Types.ObjectId, ref: 'Market', required: true, index: true },
+    organization: { type: Schema.Types.ObjectId, ref: 'Organization', index: true },
     addedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
     price: { type: Number, required: true },
     currency: { type: String, default: 'UGX' },
     date: { type: Date, required: true },
@@ -47,6 +53,17 @@ const PriceSchema = new Schema<IPrice>(
       },
     ],
     isValid: { type: Boolean, default: true },
+    status: {
+      type: String,
+      enum: ['captured', 'validated', 'published'],
+      default: 'captured',
+      index: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     errorLog: { type: String, default: '' },
   },
   {
@@ -55,5 +72,7 @@ const PriceSchema = new Schema<IPrice>(
 );
 
 PriceSchema.index({ product: 1, market: 1, date: -1 });
+PriceSchema.index({ organization: 1, status: 1, isActive: 1, date: -1 });
+PriceSchema.index({ createdBy: 1, createdAt: -1 });
 
 export default mongoose.model<IPrice>('Price', PriceSchema);

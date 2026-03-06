@@ -9,6 +9,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { successResponse } from '../../common/utils/response';
+import { ResponseHandler } from '../../common/utils/response';
 import { AppError } from '../../common/errors/AppError';
 import expertIdentityService from './expertIdentity.service';
 import caseReviewService from './caseReview.service';
@@ -16,6 +17,17 @@ import knowledgeBaseService from './knowledgeBase.service';
 import advisoryService from './advisory.service';
 import analyticsService from './analytics.service';
 import { InquiryStatus, KnowledgeCategory, AdvisoryType, UrgencyLevel } from './expert.types';
+import { advisoryUiStatus, knowledgeUiStatus, legacyCaseUiStatus } from './expert.status';
+
+const toPlainObject = <T extends Record<string, unknown>>(value: T): T => {
+  if (value && typeof (value as { toObject?: () => T }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
+  }
+  return value;
+};
+
+const toOptionalNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' ? value : undefined;
 
 // ============================================================================
 // EXPERT IDENTITY
@@ -205,7 +217,31 @@ export const listCases = async (
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
-    successResponse(res, result, 'Cases retrieved');
+    const mappedCases = result.cases.map((item) => {
+      const plain = item.toObject();
+      return {
+        ...plain,
+        uiStatus: legacyCaseUiStatus(plain.status as never),
+      };
+    });
+
+    ResponseHandler.success(
+      res,
+      {
+        ...result,
+        cases: mappedCases,
+      },
+      'Cases retrieved',
+      200,
+      {
+        pagination: {
+          page: result.page,
+          limit: Number(limit || 20),
+          total: result.total,
+          totalPages: result.pages,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -227,7 +263,30 @@ export const getMyCases = async (
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
     });
-    successResponse(res, result, 'Expert cases retrieved');
+    const mappedCases = result.cases.map((item) => {
+      const plain = item.toObject();
+      return {
+        ...plain,
+        uiStatus: legacyCaseUiStatus(plain.status as never),
+      };
+    });
+    ResponseHandler.success(
+      res,
+      {
+        ...result,
+        cases: mappedCases,
+      },
+      'Expert cases retrieved',
+      200,
+      {
+        pagination: {
+          page: result.page,
+          limit: Number(limit || 20),
+          total: result.total,
+          totalPages: result.pages,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -244,14 +303,38 @@ export const getOutbreakCases = async (
 ): Promise<void> => {
   try {
     const { region, from, to, page, limit } = req.query as Record<string, string>;
-    const cases = await caseReviewService.getOutbreakCases({
+    const result = await caseReviewService.getOutbreakCases({
       region,
       dateFrom: from ? new Date(from) : undefined,
       dateTo: to ? new Date(to) : undefined,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined,
     });
-    successResponse(res, cases, 'Outbreak cases retrieved');
+    const mappedCases = result.cases.map((item) => {
+      const plain = item.toObject();
+      return {
+        ...plain,
+        uiStatus: legacyCaseUiStatus(plain.status as never),
+      };
+    });
+
+    ResponseHandler.success(
+      res,
+      {
+        ...result,
+        cases: mappedCases,
+      },
+      'Outbreak cases retrieved',
+      200,
+      {
+        pagination: {
+          page: Number(page || 1),
+          limit: Number(limit || 50),
+          total: result.total,
+          totalPages: Math.ceil(result.total / Number(limit || 50)) || 1,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -273,7 +356,8 @@ export const assignCase = async (
       expertId,
       assignedBy: req.user!.id,
     });
-    successResponse(res, caseDoc, 'Case assigned');
+    const plain = caseDoc.toObject();
+    successResponse(res, { ...plain, uiStatus: legacyCaseUiStatus(plain.status as never) }, 'Case assigned');
   } catch (err) {
     next(err);
   }
@@ -290,7 +374,12 @@ export const startCaseReview = async (
 ): Promise<void> => {
   try {
     const caseDoc = await caseReviewService.startReview(req.params.id, req.user!.id);
-    successResponse(res, caseDoc, 'Case review started');
+    const plain = caseDoc.toObject();
+    successResponse(
+      res,
+      { ...plain, uiStatus: legacyCaseUiStatus(plain.status as never) },
+      'Case review started'
+    );
   } catch (err) {
     next(err);
   }
@@ -307,7 +396,12 @@ export const submitCaseReview = async (
 ): Promise<void> => {
   try {
     const caseDoc = await caseReviewService.submitReview(req.params.id, req.user!.id, req.body);
-    successResponse(res, caseDoc, 'Case review submitted');
+    const plain = caseDoc.toObject();
+    successResponse(
+      res,
+      { ...plain, uiStatus: legacyCaseUiStatus(plain.status as never) },
+      'Case review submitted'
+    );
   } catch (err) {
     next(err);
   }
@@ -394,7 +488,13 @@ export const createArticle = async (
       expert._id.toString(),
       req.body
     );
-    successResponse(res, article, 'Knowledge article created', 201);
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      'Knowledge article created',
+      201
+    );
   } catch (err) {
     next(err);
   }
@@ -415,7 +515,29 @@ export const updateArticle = async (
       req.user!.id,
       req.body
     );
-    successResponse(res, article, 'Article updated');
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      'Article updated'
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * DELETE /expert-portal/knowledge/:id
+ * Archive (delete) a knowledge article
+ */
+export const deleteArticle = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    await knowledgeBaseService.deleteArticle(req.params.id, req.user!.id, req.user!.role);
+    successResponse(res, null, 'Article deleted');
   } catch (err) {
     next(err);
   }
@@ -432,7 +554,12 @@ export const submitArticleForReview = async (
 ): Promise<void> => {
   try {
     const article = await knowledgeBaseService.submitForReview(req.params.id, req.user!.id);
-    successResponse(res, article, 'Article submitted for review');
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      'Article submitted for review'
+    );
   } catch (err) {
     next(err);
   }
@@ -455,7 +582,12 @@ export const reviewArticle = async (
       approve,
       reviewNotes
     );
-    successResponse(res, article, approve ? 'Article approved' : 'Article needs revision');
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      approve ? 'Article approved' : 'Article needs revision'
+    );
   } catch (err) {
     next(err);
   }
@@ -472,7 +604,12 @@ export const publishArticle = async (
 ): Promise<void> => {
   try {
     const article = await knowledgeBaseService.publishArticle(req.params.id, req.user!.id);
-    successResponse(res, article, 'Article published');
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      'Article published'
+    );
   } catch (err) {
     next(err);
   }
@@ -498,7 +635,27 @@ export const searchArticles = async (
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
     });
-    successResponse(res, result, 'Articles retrieved');
+    const rows = result.articles.map((article) => {
+      const plain = toPlainObject(article as unknown as Record<string, unknown>);
+      return { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) };
+    });
+    ResponseHandler.success(
+      res,
+      {
+        ...result,
+        articles: rows,
+      },
+      'Articles retrieved',
+      200,
+      {
+        pagination: {
+          page: result.page,
+          limit: Number(limit || 20),
+          total: result.total,
+          totalPages: result.pages,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -515,7 +672,12 @@ export const getArticle = async (
 ): Promise<void> => {
   try {
     const article = await knowledgeBaseService.getArticle(req.params.id);
-    successResponse(res, article, 'Article retrieved');
+    const plain = toPlainObject(article as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      { ...plain, uiStatus: knowledgeUiStatus(plain.status as never) },
+      'Article retrieved'
+    );
   } catch (err) {
     next(err);
   }
@@ -586,7 +748,16 @@ export const createAdvisory = async (
       req.body,
       req.user!.id
     );
-    successResponse(res, advisory, 'Advisory created', 201);
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Advisory created',
+      201
+    );
   } catch (err) {
     next(err);
   }
@@ -603,7 +774,8 @@ export const sendAdvisory = async (
 ): Promise<void> => {
   try {
     const result = await advisoryService.sendAdvisory(req.params.id, req.user!.id);
-    successResponse(res, result, 'Advisory sent successfully');
+    const status = advisoryUiStatus(result.status, result.acknowledgedCount);
+    successResponse(res, { ...result, uiStatus: status }, 'Advisory sent successfully');
   } catch (err) {
     next(err);
   }
@@ -626,7 +798,18 @@ export const issueEmergencyAlert = async (
       req.user!.id,
       req.body
     );
-    successResponse(res, result, 'Emergency alert issued', 201);
+    const plain = typeof (result as { toObject?: () => Record<string, unknown> }).toObject === 'function'
+      ? (result as { toObject: () => Record<string, unknown> }).toObject()
+      : (result as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Emergency alert issued',
+      201
+    );
   } catch (err) {
     next(err);
   }
@@ -655,7 +838,30 @@ export const listAdvisories = async (
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
     });
-    successResponse(res, result, 'Advisories retrieved');
+    const rows = result.advisories.map((advisory) => {
+      const plain = advisory.toObject();
+      return {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+      };
+    });
+    ResponseHandler.success(
+      res,
+      {
+        ...result,
+        advisories: rows,
+      },
+      'Advisories retrieved',
+      200,
+      {
+        pagination: {
+          page: result.page,
+          limit: Number(limit || 20),
+          total: result.total,
+          totalPages: result.pages,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -680,7 +886,27 @@ export const getFarmerAdvisoryFeed = async (
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 20,
     });
-    successResponse(res, advisories, 'Advisory feed retrieved');
+    const rows = advisories.map((advisory) => {
+      const plain = advisory.toObject();
+      return {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, plain.acknowledgedCount),
+      };
+    });
+    ResponseHandler.success(
+      res,
+      rows,
+      'Advisory feed retrieved',
+      200,
+      {
+        pagination: {
+          page: Number(page || 1),
+          limit: Number(limit || 20),
+          total: rows.length,
+          totalPages: 1,
+        },
+      }
+    );
   } catch (err) {
     next(err);
   }
@@ -696,8 +922,16 @@ export const acknowledgeAdvisory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    await advisoryService.acknowledgeAdvisory(req.params.id);
-    successResponse(res, null, 'Advisory acknowledged');
+    const advisory = await advisoryService.acknowledgeAdvisory(req.params.id);
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Advisory acknowledged'
+    );
   } catch (err) {
     next(err);
   }
@@ -714,7 +948,15 @@ export const getAdvisory = async (
 ): Promise<void> => {
   try {
     const advisory = await advisoryService.getAdvisoryById(req.params.id);
-    successResponse(res, advisory, 'Advisory retrieved');
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Advisory retrieved'
+    );
   } catch (err) {
     next(err);
   }
@@ -736,7 +978,15 @@ export const updateAdvisory = async (
       req.user!.role,
       req.body
     );
-    successResponse(res, advisory, 'Advisory updated');
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Advisory updated'
+    );
   } catch (err) {
     next(err);
   }
@@ -770,7 +1020,15 @@ export const submitAdvisory = async (
 ): Promise<void> => {
   try {
     const advisory = await advisoryService.submitAdvisory(req.params.id, req.user!.id);
-    successResponse(res, advisory, 'Advisory submitted for review');
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
+    successResponse(
+      res,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
+      'Advisory submitted for review'
+    );
   } catch (err) {
     next(err);
   }
@@ -793,9 +1051,13 @@ export const reviewAdvisory = async (
       decision,
       reason
     );
+    const plain = toPlainObject(advisory as unknown as Record<string, unknown>);
     successResponse(
       res,
-      advisory,
+      {
+        ...plain,
+        uiStatus: advisoryUiStatus(plain.status as never, toOptionalNumber(plain.acknowledgedCount)),
+      },
       decision === 'approved' ? 'Advisory approved' : 'Advisory rejected'
     );
   } catch (err) {

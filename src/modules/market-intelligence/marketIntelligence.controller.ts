@@ -1,14 +1,41 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { marketIntelligenceService } from './marketIntelligence.service';
-import { AppError } from '../../common/errors/AppError';
+import { AppError, ForbiddenError } from '../../common/errors/AppError';
 import PriceAlert from './priceAlert.model';
 import MarketInsight from './marketInsight.model';
 import { ResponseHandler, sendSuccess } from '../../common/utils/response';
+import { isSuperAdminRole } from '../../common/middleware/superAdmin';
+import Recommendation, { RecommendationStatus } from './recommendation.model';
+import DataSource, { DataSourceStatus } from './dataSource.model';
 
 type AlertCondition = {
   operator: 'below' | 'above' | 'equals' | 'changes_by';
   threshold: number;
   percentage?: number;
+};
+
+type AnyRecord = Record<string, unknown>;
+type AlertUiStatus = 'new' | 'investigating' | 'investigated' | 'dismissed';
+
+const ALERT_STATUS_TRANSITIONS: Record<AlertUiStatus, AlertUiStatus[]> = {
+  new: ['new', 'investigating', 'investigated', 'dismissed'],
+  investigating: ['investigating', 'investigated', 'dismissed'],
+  investigated: ['investigated', 'dismissed'],
+  dismissed: ['dismissed', 'new'],
+};
+
+const RECOMMENDATION_STATUS_TRANSITIONS: Record<RecommendationStatus, RecommendationStatus[]> = {
+  draft: ['draft', 'approved', 'retracted'],
+  approved: ['approved', 'published', 'retracted'],
+  published: ['published', 'retracted'],
+  retracted: ['retracted'],
+};
+
+const DATASOURCE_STATUS_TRANSITIONS: Record<DataSourceStatus, DataSourceStatus[]> = {
+  active: ['active', 'paused', 'disabled'],
+  paused: ['paused', 'active', 'disabled'],
+  disabled: ['disabled', 'active'],
 };
 
 class MarketIntelligenceController {
@@ -89,6 +116,139 @@ class MarketIntelligenceController {
     return undefined;
   }
 
+  private toPositiveInt(value: unknown, fallback: number, max?: number): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    if (typeof max === 'number') return Math.min(parsed, max);
+    return parsed;
+  }
+
+  private toOrgId(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private getUserId(req: Request): string {
+    const userId = req.user?.id;
+    if (!userId || typeof userId !== 'string') {
+      throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+    }
+    return userId;
+  }
+
+  private isPrivileged(role?: string): boolean {
+    return role === 'admin' || role === 'platform_admin' || role === 'trader' || isSuperAdminRole(role);
+  }
+
+  private resolveOrgId(req: Request): string | undefined {
+    const fromQuery = this.toOrgId(req.query.organizationId);
+    const fromHeader = this.toOrgId(req.headers['x-organization-id']);
+    const fromBody = typeof req.body === 'object' && req.body
+      ? this.toOrgId((req.body as AnyRecord).organizationId)
+      : undefined;
+    const requested = fromQuery || fromBody || fromHeader;
+    const actorOrg = this.toOrgId(req.user?.orgId);
+
+    if (isSuperAdminRole(req.user?.role)) {
+      return requested || actorOrg;
+    }
+
+    if (actorOrg) {
+      if (requested && requested !== actorOrg) {
+        throw new ForbiddenError('Cannot access market intelligence resources outside your organization context');
+      }
+      return actorOrg;
+    }
+
+    return requested;
+  }
+
+  private assertAccess(req: Request, ownerId: string, organizationId?: string): void {
+    if (isSuperAdminRole(req.user?.role)) return;
+
+    const actorId = this.getUserId(req);
+    const actorOrg = this.toOrgId(req.user?.orgId);
+
+    if (this.isPrivileged(req.user?.role)) {
+      if (organizationId && actorOrg && organizationId !== actorOrg) {
+        throw new ForbiddenError('Cannot access market intelligence resources outside your organization context');
+      }
+      return;
+    }
+
+    if (ownerId !== actorId) {
+      throw new ForbiddenError('You can only access your own market intelligence resources');
+    }
+
+    if (organizationId && actorOrg && organizationId !== actorOrg) {
+      throw new ForbiddenError('Cannot access market intelligence resources outside your organization context');
+    }
+  }
+
+  private normalizeAlertStatus(value: unknown): AlertUiStatus | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'new' || normalized === 'investigating' || normalized === 'investigated' || normalized === 'dismissed') {
+      return normalized;
+    }
+    return undefined;
+  }
+
+  private toPlainObject<T>(value: T): T {
+    if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+      return (value as unknown as { toObject: () => T }).toObject();
+    }
+    return value;
+  }
+
+  private toObjectId(value: string): mongoose.Types.ObjectId {
+    return new mongoose.Types.ObjectId(value);
+  }
+
+  private resolveAlertStatus(alert: AnyRecord): AlertUiStatus {
+    const explicit = this.normalizeAlertStatus(alert.status);
+    if (explicit) return explicit;
+    if (alert.active === false) return 'dismissed';
+    return 'new';
+  }
+
+  private withAlertUiStatus<T extends AnyRecord>(alert: T): T & { status: AlertUiStatus; uiStatus: AlertUiStatus } {
+    const plain = this.toPlainObject(alert);
+    const status = this.resolveAlertStatus(plain);
+    return {
+      ...plain,
+      status,
+      uiStatus: status,
+    };
+  }
+
+  private withUiStatus<T extends AnyRecord>(entity: T): T & { uiStatus: unknown } {
+    const plain = this.toPlainObject(entity);
+    return {
+      ...plain,
+      uiStatus: plain.status,
+    };
+  }
+
+  private assertAlertTransition(currentStatus: AlertUiStatus, nextStatus: AlertUiStatus): void {
+    if (!(ALERT_STATUS_TRANSITIONS[currentStatus] || []).includes(nextStatus)) {
+      throw new AppError(`Invalid alert status transition: ${currentStatus} -> ${nextStatus}`, 400, 'BAD_REQUEST');
+    }
+  }
+
+  private assertRecommendationTransition(currentStatus: RecommendationStatus, nextStatus: RecommendationStatus): void {
+    if (!(RECOMMENDATION_STATUS_TRANSITIONS[currentStatus] || []).includes(nextStatus)) {
+      throw new AppError(`Invalid recommendation status transition: ${currentStatus} -> ${nextStatus}`, 400, 'BAD_REQUEST');
+    }
+  }
+
+  private assertDataSourceTransition(currentStatus: DataSourceStatus, nextStatus: DataSourceStatus): void {
+    if (!(DATASOURCE_STATUS_TRANSITIONS[currentStatus] || []).includes(nextStatus)) {
+      throw new AppError(`Invalid data source status transition: ${currentStatus} -> ${nextStatus}`, 400, 'BAD_REQUEST');
+    }
+  }
+
   /**
    * GET /api/market-intelligence/insights
    */
@@ -147,10 +307,8 @@ class MarketIntelligenceController {
    */
   async createPriceAlert(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
+      const userId = this.getUserId(req);
+      const organizationId = this.resolveOrgId(req);
 
       const { product, region, district, condition, conditions, notificationChannels, active, isActive, alertType, frequency } = req.body;
 
@@ -163,9 +321,17 @@ class MarketIntelligenceController {
       const normalizedActive = typeof active === 'boolean'
         ? active
         : (typeof isActive === 'boolean' ? isActive : true);
+      const requestedStatus = this.normalizeAlertStatus(req.body.status ?? req.body.uiStatus);
+
+      if ((req.body.status !== undefined || req.body.uiStatus !== undefined) && !requestedStatus) {
+        throw new AppError('status must be one of new, investigating, investigated, dismissed', 400);
+      }
+
+      const resolvedStatus = requestedStatus || (normalizedActive ? 'new' : 'dismissed');
 
       const alert = await PriceAlert.create({
         user: userId,
+        organization: organizationId,
         product,
         region,
         district,
@@ -173,10 +339,11 @@ class MarketIntelligenceController {
         condition: normalizedCondition,
         notificationChannels: normalizedChannels,
         frequency: frequency || 'instant',
-        active: normalizedActive,
+        active: resolvedStatus !== 'dismissed' && normalizedActive,
+        status: resolvedStatus,
       });
 
-      sendSuccess(res, alert, 'Price alert created successfully', 201);
+      sendSuccess(res, this.withAlertUiStatus(alert as unknown as AnyRecord), 'Price alert created successfully', 201);
     } catch (error) {
       next(error);
     }
@@ -187,24 +354,30 @@ class MarketIntelligenceController {
    */
   async getUserAlerts(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
-
-      const page = Math.max(parseInt(req.query.page as string, 10) || 1, 1);
-      const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 20, 1), 100);
+      const userId = this.getUserId(req);
+      const page = this.toPositiveInt(req.query.page, 1, 10000);
+      const limit = this.toPositiveInt(req.query.limit, 20, 100);
       const skip = (page - 1) * limit;
+      const organizationId = this.resolveOrgId(req);
 
       const activeFilter = this.parseBooleanQuery(req.query.active);
       const status = req.query.status ? String(req.query.status).toLowerCase() : undefined;
 
-      const query: Record<string, unknown> = { user: userId };
+      const query: Record<string, unknown> = {};
+
+      if (organizationId) {
+        query.organization = organizationId;
+      }
+
+      if (!this.isPrivileged(req.user?.role) && !isSuperAdminRole(req.user?.role)) {
+        query.user = userId;
+      }
 
       // status takes precedence over active when both are provided
       if (status) {
         if (status === 'active') query.active = true;
-        if (status === 'inactive') query.active = false;
+        else if (status === 'inactive') query.active = false;
+        else if (this.normalizeAlertStatus(status)) query.status = status;
       } else if (activeFilter !== undefined) {
         query.active = activeFilter;
       }
@@ -224,12 +397,12 @@ class MarketIntelligenceController {
 
       ResponseHandler.paginated(
         res,
-        alerts,
+        alerts.map((alert) => this.withAlertUiStatus(alert as unknown as AnyRecord)),
         {
           page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit),
+          totalPages: Math.ceil(total / limit) || 1,
         },
         'Price alerts retrieved'
       );
@@ -244,49 +417,67 @@ class MarketIntelligenceController {
   async updatePriceAlert(req: Request, res: Response, next: NextFunction) {
     try {
       const { alertId } = req.params;
-      const userId = req.user?.id;
+      this.getUserId(req);
 
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
-
-      const alert = await PriceAlert.findOne({
-        _id: alertId,
-        user: userId,
-      });
+      const alert = await PriceAlert.findById(alertId);
 
       if (!alert) {
         throw new AppError('Price alert not found', 404);
       }
 
-      const updatePayload: Record<string, unknown> = { ...req.body };
+      this.assertAccess(req, alert.user.toString(), alert.organization?.toString());
+
+      if (req.body.product !== undefined) alert.product = req.body.product;
+      if (req.body.region !== undefined) alert.region = req.body.region;
+      if (req.body.district !== undefined) alert.district = req.body.district;
+      if (req.body.alertType !== undefined) alert.alertType = req.body.alertType;
+      if (req.body.frequency !== undefined) alert.frequency = req.body.frequency;
 
       if (req.body.condition !== undefined || req.body.conditions !== undefined) {
-        updatePayload.condition = this.normalizeAlertCondition(
-          req.body.condition ?? req.body.conditions
-        );
+        alert.condition = this.normalizeAlertCondition(req.body.condition ?? req.body.conditions);
       }
 
       if (req.body.notificationChannels !== undefined) {
-        updatePayload.notificationChannels = this.normalizeNotificationChannels(
-          req.body.notificationChannels
-        );
+        alert.notificationChannels = this.normalizeNotificationChannels(req.body.notificationChannels) as any;
       }
 
-      if (typeof req.body.isActive === 'boolean' && req.body.active === undefined) {
-        updatePayload.active = req.body.isActive;
+      const requestedStatus = this.normalizeAlertStatus(req.body.status ?? req.body.uiStatus);
+      if ((req.body.status !== undefined || req.body.uiStatus !== undefined) && !requestedStatus) {
+        throw new AppError('status must be one of new, investigating, investigated, dismissed', 400);
       }
 
-      delete updatePayload.conditions;
-      delete updatePayload.isActive;
+      const requestedActive = typeof req.body.active === 'boolean'
+        ? req.body.active
+        : (typeof req.body.isActive === 'boolean' ? req.body.isActive : undefined);
 
-      const updatedAlert = await PriceAlert.findByIdAndUpdate(
-        alertId,
-        { $set: updatePayload },
-        { new: true, runValidators: true }
-      ).populate('product', 'name category variety');
+      const currentStatus = this.resolveAlertStatus(alert as unknown as AnyRecord);
 
-      sendSuccess(res, updatedAlert, 'Price alert updated successfully');
+      if (requestedStatus) {
+        this.assertAlertTransition(currentStatus, requestedStatus);
+        alert.status = requestedStatus;
+        alert.active = requestedStatus !== 'dismissed';
+      } else if (typeof requestedActive === 'boolean') {
+        if (!requestedActive) {
+          this.assertAlertTransition(currentStatus, 'dismissed');
+          alert.status = 'dismissed';
+          alert.active = false;
+        } else {
+          if (currentStatus === 'dismissed') {
+            this.assertAlertTransition(currentStatus, 'new');
+            alert.status = 'new';
+          }
+          alert.active = true;
+        }
+      }
+
+      await alert.save();
+
+      const populated = await PriceAlert.findById(alertId).populate('product', 'name category variety');
+      sendSuccess(
+        res,
+        this.withAlertUiStatus((populated || alert) as unknown as AnyRecord),
+        'Price alert updated successfully'
+      );
     } catch (error) {
       next(error);
     }
@@ -298,20 +489,15 @@ class MarketIntelligenceController {
   async deletePriceAlert(req: Request, res: Response, next: NextFunction) {
     try {
       const { alertId } = req.params;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        throw new AppError('Authentication required', 401);
-      }
-
-      const alert = await PriceAlert.findOneAndDelete({
-        _id: alertId,
-        user: userId,
-      });
+      this.getUserId(req);
+      const alert = await PriceAlert.findById(alertId);
 
       if (!alert) {
         throw new AppError('Price alert not found', 404);
       }
+
+      this.assertAccess(req, alert.user.toString(), alert.organization?.toString());
+      await alert.deleteOne();
 
       sendSuccess(res, null, 'Price alert deleted successfully');
     } catch (error) {
@@ -397,6 +583,378 @@ class MarketIntelligenceController {
         period: `Last ${period} days`,
         dataPoints: trends.length,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listRecommendations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const page = this.toPositiveInt(req.query.page, 1, 10000);
+      const limit = this.toPositiveInt(req.query.limit, 20, 100);
+      const skip = (page - 1) * limit;
+      const organizationId = this.resolveOrgId(req);
+      const filter: Record<string, unknown> = { isActive: true };
+
+      if (organizationId) filter.organization = organizationId;
+      if (typeof req.query.status === 'string') filter.status = req.query.status;
+      if (typeof req.query.productId === 'string') filter.productId = req.query.productId;
+      if (typeof req.query.marketId === 'string') filter.marketId = req.query.marketId;
+      if (typeof req.query.region === 'string') filter.region = req.query.region;
+
+      if (!this.isPrivileged(req.user?.role) && !isSuperAdminRole(req.user?.role)) {
+        filter.createdBy = this.getUserId(req);
+      }
+
+      const [rows, total] = await Promise.all([
+        Recommendation.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        Recommendation.countDocuments(filter),
+      ]);
+
+      ResponseHandler.success(
+        res,
+        rows.map((item) => this.withUiStatus(item as unknown as AnyRecord)),
+        'Recommendations retrieved',
+        200,
+        {
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
+          },
+        }
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actorId = this.getUserId(req);
+      const organizationId = this.resolveOrgId(req);
+      const status = (req.body.status as RecommendationStatus | undefined) || 'draft';
+
+      if (!['draft', 'approved', 'published', 'retracted'].includes(status)) {
+        throw new AppError('status must be one of draft, approved, published, retracted', 400, 'BAD_REQUEST');
+      }
+
+      const recommendation = await Recommendation.create({
+        organization: organizationId,
+        createdBy: actorId,
+        productId: req.body.productId,
+        marketId: req.body.marketId,
+        region: req.body.region,
+        recommendationType: req.body.recommendationType || 'price',
+        recommendedPrice: req.body.recommendedPrice !== undefined ? Number(req.body.recommendedPrice) : undefined,
+        currency: req.body.currency || 'UGX',
+        rationale: req.body.rationale,
+        status,
+        approvedAt: status === 'approved' ? new Date() : undefined,
+        approvedBy: status === 'approved' ? actorId : undefined,
+        publishedAt: status === 'published' ? new Date() : undefined,
+        retractedAt: status === 'retracted' ? new Date() : undefined,
+        notes: req.body.notes,
+        metadata: req.body.metadata || {},
+        isActive: true,
+      });
+
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation created', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+
+      if (typeof req.body.status === 'string') {
+        const nextStatus = req.body.status as RecommendationStatus;
+        if (!['draft', 'approved', 'published', 'retracted'].includes(nextStatus)) {
+          throw new AppError('status must be one of draft, approved, published, retracted', 400, 'BAD_REQUEST');
+        }
+        this.assertRecommendationTransition(recommendation.status, nextStatus);
+        recommendation.status = nextStatus;
+        if (nextStatus === 'approved' && !recommendation.approvedAt) {
+          recommendation.approvedAt = new Date();
+          recommendation.approvedBy = this.toObjectId(this.getUserId(req));
+        }
+        if (nextStatus === 'published' && !recommendation.publishedAt) recommendation.publishedAt = new Date();
+        if (nextStatus === 'retracted' && !recommendation.retractedAt) recommendation.retractedAt = new Date();
+      }
+
+      if (req.body.productId !== undefined) recommendation.productId = req.body.productId;
+      if (req.body.marketId !== undefined) recommendation.marketId = req.body.marketId;
+      if (req.body.region !== undefined) recommendation.region = req.body.region;
+      if (req.body.recommendationType !== undefined) recommendation.recommendationType = req.body.recommendationType;
+      if (req.body.recommendedPrice !== undefined) recommendation.recommendedPrice = Number(req.body.recommendedPrice);
+      if (req.body.currency !== undefined) recommendation.currency = req.body.currency;
+      if (req.body.rationale !== undefined) recommendation.rationale = req.body.rationale;
+      if (req.body.notes !== undefined) recommendation.notes = req.body.notes;
+      if (req.body.metadata !== undefined) recommendation.metadata = req.body.metadata;
+
+      await recommendation.save();
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation updated');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+      recommendation.isActive = false;
+      recommendation.status = 'retracted';
+      recommendation.retractedAt = recommendation.retractedAt || new Date();
+      await recommendation.save();
+      sendSuccess(res, null, 'Recommendation deleted');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async approveRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+      this.assertRecommendationTransition(recommendation.status, 'approved');
+
+      recommendation.status = 'approved';
+      recommendation.approvedAt = new Date();
+      recommendation.approvedBy = this.toObjectId(this.getUserId(req));
+      await recommendation.save();
+
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation approved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async publishRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+      this.assertRecommendationTransition(recommendation.status, 'published');
+
+      recommendation.status = 'published';
+      recommendation.publishedAt = new Date();
+      await recommendation.save();
+
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation published');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async retractRecommendation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const recommendation = await Recommendation.findOne({ _id: req.params.recommendationId, isActive: true });
+      if (!recommendation) {
+        throw new AppError('Recommendation not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, recommendation.createdBy.toString(), recommendation.organization?.toString());
+      this.assertRecommendationTransition(recommendation.status, 'retracted');
+
+      recommendation.status = 'retracted';
+      recommendation.retractedAt = new Date();
+      await recommendation.save();
+
+      sendSuccess(res, this.withUiStatus(recommendation as unknown as AnyRecord), 'Recommendation retracted');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listDataSources(req: Request, res: Response, next: NextFunction) {
+    try {
+      const page = this.toPositiveInt(req.query.page, 1, 10000);
+      const limit = this.toPositiveInt(req.query.limit, 20, 100);
+      const skip = (page - 1) * limit;
+      const organizationId = this.resolveOrgId(req);
+      const filter: Record<string, unknown> = { isActive: true };
+
+      if (organizationId) filter.organization = organizationId;
+      if (typeof req.query.status === 'string') filter.status = req.query.status;
+      if (typeof req.query.provider === 'string') filter.provider = req.query.provider;
+      if (typeof req.query.name === 'string') {
+        filter.name = { $regex: req.query.name.trim(), $options: 'i' };
+      }
+
+      if (!this.isPrivileged(req.user?.role) && !isSuperAdminRole(req.user?.role)) {
+        filter.createdBy = this.getUserId(req);
+      }
+
+      const [rows, total] = await Promise.all([
+        DataSource.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+        DataSource.countDocuments(filter),
+      ]);
+
+      ResponseHandler.success(
+        res,
+        rows.map((item) => this.withUiStatus(item as unknown as AnyRecord)),
+        'Data sources retrieved',
+        200,
+        {
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit) || 1,
+          },
+        }
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async createDataSource(req: Request, res: Response, next: NextFunction) {
+    try {
+      const actorId = this.getUserId(req);
+      const organizationId = this.resolveOrgId(req);
+      const status = (req.body.status as DataSourceStatus | undefined) || 'active';
+
+      if (!['active', 'paused', 'disabled'].includes(status)) {
+        throw new AppError('status must be one of active, paused, disabled', 400, 'BAD_REQUEST');
+      }
+
+      const source = await DataSource.create({
+        organization: organizationId,
+        createdBy: actorId,
+        name: req.body.name,
+        provider: req.body.provider || req.body.name,
+        endpoint: req.body.endpoint,
+        status,
+        authType: req.body.authType || 'none',
+        pullIntervalMinutes: req.body.pullIntervalMinutes !== undefined
+          ? Number(req.body.pullIntervalMinutes)
+          : undefined,
+        metadata: req.body.metadata || {},
+        isActive: true,
+      });
+
+      sendSuccess(res, this.withUiStatus(source as unknown as AnyRecord), 'Data source created', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getDataSource(req: Request, res: Response, next: NextFunction) {
+    try {
+      const source = await DataSource.findOne({ _id: req.params.sourceId, isActive: true });
+      if (!source) {
+        throw new AppError('Data source not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, source.createdBy.toString(), source.organization?.toString());
+      sendSuccess(res, this.withUiStatus(source as unknown as AnyRecord), 'Data source retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateDataSource(req: Request, res: Response, next: NextFunction) {
+    try {
+      const source = await DataSource.findOne({ _id: req.params.sourceId, isActive: true });
+      if (!source) {
+        throw new AppError('Data source not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, source.createdBy.toString(), source.organization?.toString());
+
+      if (typeof req.body.status === 'string') {
+        const nextStatus = req.body.status as DataSourceStatus;
+        if (!['active', 'paused', 'disabled'].includes(nextStatus)) {
+          throw new AppError('status must be one of active, paused, disabled', 400, 'BAD_REQUEST');
+        }
+        this.assertDataSourceTransition(source.status, nextStatus);
+        source.status = nextStatus;
+      }
+
+      if (req.body.name !== undefined) source.name = req.body.name;
+      if (req.body.provider !== undefined) source.provider = req.body.provider;
+      if (req.body.endpoint !== undefined) source.endpoint = req.body.endpoint;
+      if (req.body.authType !== undefined) source.authType = req.body.authType;
+      if (req.body.pullIntervalMinutes !== undefined) source.pullIntervalMinutes = Number(req.body.pullIntervalMinutes);
+      if (req.body.metadata !== undefined) source.metadata = req.body.metadata;
+
+      await source.save();
+      sendSuccess(res, this.withUiStatus(source as unknown as AnyRecord), 'Data source updated');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteDataSource(req: Request, res: Response, next: NextFunction) {
+    try {
+      const source = await DataSource.findOne({ _id: req.params.sourceId, isActive: true });
+      if (!source) {
+        throw new AppError('Data source not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, source.createdBy.toString(), source.organization?.toString());
+      source.isActive = false;
+      source.status = 'disabled';
+      await source.save();
+      sendSuccess(res, null, 'Data source deleted');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async refreshDataSource(req: Request, res: Response, next: NextFunction) {
+    try {
+      const source = await DataSource.findOne({ _id: req.params.sourceId, isActive: true });
+      if (!source) {
+        throw new AppError('Data source not found', 404, 'NOT_FOUND');
+      }
+
+      this.assertAccess(req, source.createdBy.toString(), source.organization?.toString());
+      source.lastRefreshAt = new Date();
+      source.lastRefreshStatus = 'success';
+      source.lastError = undefined;
+      await source.save();
+
+      sendSuccess(
+        res,
+        this.withUiStatus(source as unknown as AnyRecord),
+        'Data source refresh queued'
+      );
     } catch (error) {
       next(error);
     }

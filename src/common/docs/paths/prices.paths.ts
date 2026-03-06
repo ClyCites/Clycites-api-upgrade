@@ -4,12 +4,15 @@ const r = (s: object) => ({ required: true, content: { 'application/json': { sch
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 const daysParam = { $ref: '#/components/parameters/daysParam' };
+const predictionIdParam = { name: 'predictionId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
 
 const commonFilters = [
   pageParam, limitParam,
   { name: 'marketId', in: 'query' as const, schema: { type: 'string' as const } },
   { name: 'productId', in: 'query' as const, schema: { type: 'string' as const } },
   { name: 'region', in: 'query' as const, schema: { type: 'string' as const } },
+  { name: 'status', in: 'query' as const, schema: { type: 'string' as const, enum: ['captured', 'validated', 'published'] } },
+  { name: 'uiStatus', in: 'query' as const, schema: { type: 'string' as const, enum: ['captured', 'validated', 'published'] } },
 ];
 
 const priceBody = {
@@ -25,6 +28,8 @@ const priceBody = {
     priceType: { type: 'string', enum: ['retail', 'wholesale', 'farmgate', 'export', 'import'] },
     grade: { type: 'string', enum: ['A', 'B', 'C', 'standard'] },
     source: { type: 'string', enum: ['manual', 'automated', 'market_survey', 'aggregated'] },
+    status: { type: 'string', enum: ['captured', 'validated', 'published'] },
+    uiStatus: { type: 'string', enum: ['captured', 'validated', 'published'] },
     notes: { type: 'string' },
   },
 };
@@ -69,6 +74,132 @@ export const pricesPaths: Record<string, unknown> = {
       security: auth,
       requestBody: r({ type: 'object', required: ['productId'], properties: { productId: { type: 'string' }, marketId: { type: 'string' }, daysAhead: { type: 'integer', minimum: 1, maximum: 90, default: 7 } } }),
       responses: { 200: { description: 'Prediction result.', content: { 'application/json': { schema: { type: 'object', properties: { predictedPrice: { type: 'number' }, confidence: { type: 'number' }, range: { type: 'object', properties: { low: { type: 'number' }, high: { type: 'number' } } } } } } } }, 401: { $ref: '#/components/responses/Unauthorized' } },
+    },
+  },
+
+  '/api/v1/prices/predictions': {
+    get: {
+      tags: ['Prices'],
+      summary: 'List saved price predictions',
+      description: 'Returns prediction resources with deterministic status mapping (`generated|compared|archived`).',
+      security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'productId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'marketId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['generated', 'compared', 'archived'] } },
+      ],
+      responses: {
+        200: { description: 'Predictions retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+    post: {
+      tags: ['Prices'],
+      summary: 'Create saved price prediction',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['productId', 'predictedPrice'],
+        properties: {
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          productId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          marketId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          horizonDays: { type: 'integer', minimum: 1, maximum: 365, default: 7 },
+          predictedPrice: { type: 'number', minimum: 0 },
+          lowerBound: { type: 'number', minimum: 0 },
+          upperBound: { type: 'number', minimum: 0 },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          modelVersion: { type: 'string' },
+          currency: { type: 'string', example: 'UGX' },
+          status: { type: 'string', enum: ['generated', 'compared', 'archived'] },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        201: { description: 'Prediction created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+  },
+
+  '/api/v1/prices/predictions/{predictionId}': {
+    get: {
+      tags: ['Prices'],
+      summary: 'Get price prediction',
+      security: auth,
+      parameters: [predictionIdParam],
+      responses: {
+        200: { description: 'Prediction retrieved.', content: { 'application/json': { schema: { $ref: '#/components/schemas/PricePrediction' } } } },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Prices'],
+      summary: 'Update price prediction',
+      description: 'Validates prediction status transitions and returns 400 on invalid transition attempts.',
+      security: auth,
+      parameters: [predictionIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          horizonDays: { type: 'integer', minimum: 1, maximum: 365 },
+          predictedPrice: { type: 'number', minimum: 0 },
+          lowerBound: { type: 'number', minimum: 0 },
+          upperBound: { type: 'number', minimum: 0 },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          modelVersion: { type: 'string' },
+          currency: { type: 'string', example: 'UGX' },
+          status: { type: 'string', enum: ['generated', 'compared', 'archived'] },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        200: { description: 'Prediction updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+      },
+    },
+    delete: {
+      tags: ['Prices'],
+      summary: 'Delete price prediction',
+      security: auth,
+      parameters: [predictionIdParam],
+      responses: {
+        200: { description: 'Prediction deleted.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+  },
+
+  '/api/v1/prices/predictions/{predictionId}/regenerate': {
+    post: {
+      tags: ['Prices'],
+      summary: 'Regenerate prediction values',
+      security: auth,
+      parameters: [predictionIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          predictedPrice: { type: 'number', minimum: 0 },
+          lowerBound: { type: 'number', minimum: 0 },
+          upperBound: { type: 'number', minimum: 0 },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          modelVersion: { type: 'string' },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        200: { description: 'Prediction regenerated.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
     },
   },
 

@@ -1,6 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
 import OrganizationService from './organization.service';
-import { successResponse } from '../../common/utils/response';
+import { ResponseHandler, successResponse } from '../../common/utils/response';
+
+const toPlainObject = <T>(value: T): T => {
+  if (value && typeof (value as { toObject?: () => unknown }).toObject === 'function') {
+    return (value as unknown as { toObject: () => T }).toObject();
+  }
+  return value;
+};
+
+const withOrganizationUiStatus = <T extends Record<string, unknown>>(organization: T): T & { uiStatus: 'active' | 'disabled' } => {
+  const plain = toPlainObject(organization);
+  const status = plain.status === 'active' ? 'active' : 'disabled';
+  return { ...plain, uiStatus: status };
+};
+
+const withMemberUiStatus = <T extends Record<string, unknown>>(member: T): T & { uiStatus: 'active' | 'disabled' } => {
+  const plain = toPlainObject(member);
+  const status = plain.status === 'active' ? 'active' : 'disabled';
+  return { ...plain, uiStatus: status };
+};
 
 class OrganizationController {
   /**
@@ -13,7 +32,7 @@ class OrganizationController {
         ownerId: req.user!.id,
       });
 
-      return successResponse(res, organization, 'Organization created successfully', 201);
+      return successResponse(res, withOrganizationUiStatus(organization as unknown as Record<string, unknown>), 'Organization created successfully', 201);
     } catch (error) {
       return next(error);
     }
@@ -25,7 +44,7 @@ class OrganizationController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const organization = await OrganizationService.getById(req.params.id);
-      return successResponse(res, organization);
+      return successResponse(res, withOrganizationUiStatus(organization as unknown as Record<string, unknown>));
     } catch (error) {
       return next(error);
     }
@@ -42,7 +61,7 @@ class OrganizationController {
         req.user!.id
       );
 
-      return successResponse(res, organization, 'Organization updated successfully');
+      return successResponse(res, withOrganizationUiStatus(organization as unknown as Record<string, unknown>), 'Organization updated successfully');
     } catch (error) {
       return next(error);
     }
@@ -58,7 +77,14 @@ class OrganizationController {
         invitedBy: req.user!.id,
       });
 
-      return successResponse(res, result, 'Member invited successfully');
+      return successResponse(
+        res,
+        {
+          ...result,
+          member: withMemberUiStatus(result.member as unknown as Record<string, unknown>),
+        },
+        'Member invited successfully'
+      );
     } catch (error) {
       return next(error);
     }
@@ -74,7 +100,7 @@ class OrganizationController {
         req.user!.id
       );
 
-      return successResponse(res, member, 'Invitation accepted successfully');
+      return successResponse(res, withMemberUiStatus(member as unknown as Record<string, unknown>), 'Invitation accepted successfully');
     } catch (error) {
       return next(error);
     }
@@ -85,12 +111,25 @@ class OrganizationController {
    */
   async getMembers(req: Request, res: Response, next: NextFunction) {
     try {
-      const members = await OrganizationService.getMembers(
+      const { members, pagination } = await OrganizationService.getMembers(
         req.params.id,
-        req.query
+        {
+          status: typeof req.query.status === 'string' ? req.query.status : undefined,
+          uiStatus: typeof req.query.uiStatus === 'string'
+            ? (req.query.uiStatus as 'active' | 'disabled')
+            : undefined,
+          page: Number(req.query.page || 1),
+          limit: Number(req.query.limit || 20),
+        }
       );
 
-      return successResponse(res, members);
+      return ResponseHandler.success(
+        res,
+        members.map((member) => withMemberUiStatus(member as unknown as Record<string, unknown>)),
+        'Organization members retrieved',
+        200,
+        { pagination }
+      );
     } catch (error) {
       return next(error);
     }
@@ -126,7 +165,69 @@ class OrganizationController {
         req.user!.id
       );
 
-      return successResponse(res, member, 'Member role updated successfully');
+      return successResponse(res, withMemberUiStatus(member as unknown as Record<string, unknown>), 'Member role updated successfully');
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async disableMember(req: Request, res: Response, next: NextFunction) {
+    try {
+      const member = await OrganizationService.setMemberStatus(
+        req.params.id,
+        req.params.memberId,
+        'disable',
+        req.user!.id,
+        req.body.reason
+      );
+
+      return successResponse(res, withMemberUiStatus(member as unknown as Record<string, unknown>), 'Member disabled successfully');
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async enableMember(req: Request, res: Response, next: NextFunction) {
+    try {
+      const member = await OrganizationService.setMemberStatus(
+        req.params.id,
+        req.params.memberId,
+        'enable',
+        req.user!.id,
+        req.body.reason
+      );
+
+      return successResponse(res, withMemberUiStatus(member as unknown as Record<string, unknown>), 'Member enabled successfully');
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async disableOrganization(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organization = await OrganizationService.setOrganizationStatus(
+        req.params.id,
+        'disable',
+        req.user!.id,
+        req.body.reason
+      );
+
+      return successResponse(res, withOrganizationUiStatus(organization as unknown as Record<string, unknown>), 'Organization disabled successfully');
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  async enableOrganization(req: Request, res: Response, next: NextFunction) {
+    try {
+      const organization = await OrganizationService.setOrganizationStatus(
+        req.params.id,
+        'enable',
+        req.user!.id,
+        req.body.reason
+      );
+
+      return successResponse(res, withOrganizationUiStatus(organization as unknown as Record<string, unknown>), 'Organization enabled successfully');
     } catch (error) {
       return next(error);
     }
@@ -141,7 +242,17 @@ class OrganizationController {
         req.user!.id
       );
 
-      return successResponse(res, organizations);
+      const mappedOrganizations = organizations.map((entry) => {
+        const plain = toPlainObject(entry as unknown as Record<string, unknown>);
+        const organization = plain.organization as Record<string, unknown> | undefined;
+        if (!organization) return plain;
+        return {
+          ...plain,
+          organization: withOrganizationUiStatus(organization),
+        };
+      });
+
+      return successResponse(res, mappedOrganizations);
     } catch (error) {
       return next(error);
     }

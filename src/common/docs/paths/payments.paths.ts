@@ -3,17 +3,19 @@ const r = (s: object) => ({ required: true, content: { 'application/json': { sch
 const pageParam = { $ref: '#/components/parameters/pageParam' };
 const limitParam = { $ref: '#/components/parameters/limitParam' };
 const escrowIdParam = { name: 'escrowId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
+const payoutIdParam = { name: 'payoutId', in: 'path' as const, required: true, schema: { type: 'string' as const, pattern: '^[a-f0-9]{24}$' } };
 
 const walletSchema = {
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    userId: { type: 'string' },
-    balance: { type: 'number', description: 'Available balance (USD).' },
-    currency: { type: 'string', example: 'USD' },
+    _id: { type: 'string' },
+    user: { type: 'string' },
+    balance: { type: 'number', description: 'Wallet balance.' },
     escrowBalance: { type: 'number' },
-    totalEarned: { type: 'number' },
-    totalSpent: { type: 'number' },
+    availableBalance: { type: 'number' },
+    currency: { type: 'string', example: 'UGX' },
+    status: { type: 'string', enum: ['active', 'suspended', 'frozen', 'closed'] },
+    uiStatus: { type: 'string', enum: ['active', 'frozen'] },
     updatedAt: { type: 'string', format: 'date-time' },
   },
 };
@@ -22,10 +24,11 @@ const transactionSchema = {
   type: 'object',
   properties: {
     id: { type: 'string' },
-    type: { type: 'string', enum: ['deposit', 'withdrawal', 'escrow_lock', 'escrow_release', 'escrow_refund', 'payment'] },
+    type: { type: 'string', enum: ['deposit', 'withdrawal', 'payment', 'refund', 'escrow_hold', 'escrow_release', 'fee', 'commission', 'transfer'] },
     amount: { type: 'number' },
     currency: { type: 'string' },
-    status: { type: 'string', enum: ['pending', 'completed', 'failed', 'cancelled'] },
+    status: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed', 'reversed', 'cancelled'] },
+    uiStatus: { type: 'string', enum: ['pending', 'completed', 'failed', 'reversed'] },
     reference: { type: 'string' },
     description: { type: 'string' },
     createdAt: { type: 'string', format: 'date-time' },
@@ -41,7 +44,24 @@ const escrowSchema = {
     sellerId: { type: 'string' },
     amount: { type: 'number' },
     currency: { type: 'string' },
-    status: { type: 'string', enum: ['active', 'released', 'refunded', 'disputed'] },
+    status: { type: 'string', enum: ['initiated', 'funded', 'held', 'released', 'refunded', 'disputed'] },
+    uiStatus: { type: 'string', enum: ['created', 'funded', 'released', 'refunded', 'closed'] },
+    createdAt: { type: 'string', format: 'date-time' },
+  },
+};
+
+const payoutSchema = {
+  type: 'object',
+  properties: {
+    _id: { type: 'string' },
+    amount: { type: 'number' },
+    currency: { type: 'string', example: 'UGX' },
+    method: { type: 'string', enum: ['bank_transfer', 'mobile_money', 'cash'] },
+    status: { type: 'string', enum: ['requested', 'processing', 'paid', 'failed'] },
+    uiStatus: { type: 'string', enum: ['requested', 'processing', 'paid', 'failed'] },
+    reference: { type: 'string' },
+    failureReason: { type: 'string' },
+    requestedAt: { type: 'string', format: 'date-time' },
     createdAt: { type: 'string', format: 'date-time' },
   },
 };
@@ -54,6 +74,7 @@ export const paymentsPaths: Record<string, unknown> = {
     get: {
       tags: ['Payments'],
       summary: 'Get my wallet',
+      description: 'Returns wallet status plus canonical `uiStatus` (`active|frozen`) and safe workflow hints.',
       operationId: 'getWallet',
       security: auth,
       responses: {
@@ -127,19 +148,21 @@ export const paymentsPaths: Record<string, unknown> = {
     get: {
       tags: ['Payments'],
       summary: 'Get my transaction history',
+      description: 'Supports native `status` filters and canonical UI mapping via `uiStatus`.',
       operationId: 'getTransactions',
       security: auth,
       parameters: [
         pageParam, limitParam,
-        { name: 'type', in: 'query', schema: { type: 'string', enum: ['deposit', 'withdrawal', 'escrow_lock', 'escrow_release', 'escrow_refund', 'payment'] } },
-        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'completed', 'failed', 'cancelled'] } },
+        { name: 'type', in: 'query', schema: { type: 'string', enum: ['deposit', 'withdrawal', 'payment', 'refund', 'escrow_hold', 'escrow_release', 'fee', 'commission', 'transfer'] } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed', 'reversed', 'cancelled'] } },
+        { name: 'uiStatus', in: 'query', schema: { type: 'string', enum: ['pending', 'completed', 'failed', 'reversed'] } },
         { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date' } },
         { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date' } },
       ],
       responses: {
         200: {
           description: 'Transaction list.',
-          content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: transactionSchema }, meta: { $ref: '#/components/schemas/PaginationMeta' } } }] } } },
+          content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'object', properties: { transactions: { type: 'array', items: transactionSchema }, pagination: { $ref: '#/components/schemas/PaginationMeta' } } }, meta: { type: 'object', properties: { pagination: { $ref: '#/components/schemas/PaginationMeta' } } } } }] } } },
         },
         401: { $ref: '#/components/responses/Unauthorized' },
       },
@@ -155,7 +178,7 @@ export const paymentsPaths: Record<string, unknown> = {
       description: 'Locks the buyer\'s wallet funds in escrow for the specified order.',
       operationId: 'initiateEscrow',
       security: auth,
-      requestBody: r({ type: 'object', required: ['orderId', 'amount'], properties: { orderId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, amount: { type: 'number', minimum: 0.01 } } }),
+      requestBody: r({ type: 'object', required: ['orderId', 'sellerId', 'amount'], properties: { orderId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, sellerId: { type: 'string', pattern: '^[a-f0-9]{24}$' }, amount: { type: 'number', minimum: 0.01 } } }),
       responses: {
         201: { description: 'Escrow created.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: escrowSchema } }] } } } },
         400: { $ref: '#/components/responses/ValidationError' },
@@ -170,7 +193,7 @@ export const paymentsPaths: Record<string, unknown> = {
       summary: 'List my escrows',
       operationId: 'getUserEscrows',
       security: auth,
-      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'released', 'refunded', 'disputed', 'all'] } }],
+      parameters: [pageParam, limitParam, { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'released', 'refunded', 'disputed', 'all', 'created', 'funded', 'closed', 'initiated', 'held'] } }],
       responses: {
         200: { description: 'Escrow list.', content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/SuccessResponse' }, { type: 'object', properties: { data: { type: 'array', items: escrowSchema } } }] } } } },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -225,6 +248,144 @@ export const paymentsPaths: Record<string, unknown> = {
         200: { description: 'Escrow refunded.' },
         401: { $ref: '#/components/responses/Unauthorized' },
         403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  // ─── Payouts ────────────────────────────────────────────────────────────────
+
+  '/api/v1/payments/payouts': {
+    get: {
+      tags: ['Payments'],
+      summary: 'List payouts',
+      operationId: 'listPayouts',
+      security: auth,
+      parameters: [
+        pageParam,
+        limitParam,
+        { name: 'organizationId', in: 'query', schema: { type: 'string', pattern: '^[a-f0-9]{24}$' } },
+        { name: 'status', in: 'query', schema: { type: 'string', enum: ['requested', 'processing', 'paid', 'failed'] } },
+        { name: 'method', in: 'query', schema: { type: 'string', enum: ['bank_transfer', 'mobile_money', 'cash'] } },
+      ],
+      responses: {
+        200: { description: 'Payouts retrieved.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+    post: {
+      tags: ['Payments'],
+      summary: 'Create payout',
+      operationId: 'createPayout',
+      security: auth,
+      requestBody: r({
+        type: 'object',
+        required: ['amount'],
+        properties: {
+          organizationId: { type: 'string', pattern: '^[a-f0-9]{24}$' },
+          amount: { type: 'number', minimum: 0.01 },
+          method: { type: 'string', enum: ['bank_transfer', 'mobile_money', 'cash'] },
+          accountDetails: { type: 'object', additionalProperties: true },
+          reference: { type: 'string' },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        201: { description: 'Payout created.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+  },
+
+  '/api/v1/payments/payouts/{payoutId}': {
+    get: {
+      tags: ['Payments'],
+      summary: 'Get payout',
+      operationId: 'getPayout',
+      security: auth,
+      parameters: [payoutIdParam],
+      responses: {
+        200: { description: 'Payout retrieved.', content: { 'application/json': { schema: payoutSchema } } },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+        404: { $ref: '#/components/responses/NotFound' },
+      },
+    },
+    patch: {
+      tags: ['Payments'],
+      summary: 'Update payout',
+      description: 'Validates payout status transitions and returns 400 on invalid transitions.',
+      operationId: 'updatePayout',
+      security: auth,
+      parameters: [payoutIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          method: { type: 'string', enum: ['bank_transfer', 'mobile_money', 'cash'] },
+          accountDetails: { type: 'object', additionalProperties: true },
+          reference: { type: 'string' },
+          status: { type: 'string', enum: ['requested', 'processing', 'paid', 'failed'] },
+          failureReason: { type: 'string' },
+          notes: { type: 'string' },
+          metadata: { type: 'object', additionalProperties: true },
+        },
+      }),
+      responses: {
+        200: { description: 'Payout updated.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+    delete: {
+      tags: ['Payments'],
+      summary: 'Delete payout',
+      operationId: 'deletePayout',
+      security: auth,
+      parameters: [payoutIdParam],
+      responses: {
+        200: { description: 'Payout deleted.' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+        403: { $ref: '#/components/responses/Forbidden' },
+      },
+    },
+  },
+
+  '/api/v1/payments/payouts/{payoutId}/approve': {
+    post: {
+      tags: ['Payments'],
+      summary: 'Approve payout',
+      description: 'Marks payout as paid and updates linked transaction status.',
+      operationId: 'approvePayout',
+      security: auth,
+      parameters: [payoutIdParam],
+      responses: {
+        200: { description: 'Payout approved.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
+      },
+    },
+  },
+
+  '/api/v1/payments/payouts/{payoutId}/fail': {
+    post: {
+      tags: ['Payments'],
+      summary: 'Fail payout',
+      description: 'Marks payout as failed, updates linked transaction, and reverses wallet debit.',
+      operationId: 'failPayout',
+      security: auth,
+      parameters: [payoutIdParam],
+      requestBody: r({
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+        },
+      }),
+      responses: {
+        200: { description: 'Payout marked as failed.' },
+        400: { $ref: '#/components/responses/ValidationError' },
+        401: { $ref: '#/components/responses/Unauthorized' },
       },
     },
   },

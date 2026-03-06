@@ -118,6 +118,7 @@ const chartSchema = new Schema<IChartMongoDocument>(
     sharedWithRoles: [String],
     sharedWithUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     tags:         [String],
+    status:       { type: String, enum: ['draft', 'published', 'archived'], default: 'draft', index: true },
     isTemplate:   { type: Boolean, default: false, index: true },
     lastRunAt:    Date,
     lastRunDurationMs: Number,
@@ -127,6 +128,7 @@ const chartSchema = new Schema<IChartMongoDocument>(
 
 chartSchema.index({ ownerId: 1, orgId: 1 });
 chartSchema.index({ orgId: 1, shareScope: 1 });
+chartSchema.index({ ownerId: 1, status: 1, createdAt: -1 });
 chartSchema.index({ isTemplate: 1 });
 chartSchema.index({ tags: 1 });
 

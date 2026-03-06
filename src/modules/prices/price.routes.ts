@@ -3,6 +3,14 @@ import priceController from './price.controller';
 import { authenticate } from '../../common/middleware/auth';
 import { authorize } from '../../common/middleware/authorize';
 import { blockWhenFeatureFlagEnabled } from '../../common/middleware/featureFlagGuard';
+import { validate } from '../../common/middleware/validate';
+import {
+  createPredictionValidator,
+  listPredictionsValidator,
+  predictionIdValidator,
+  regeneratePredictionValidator,
+  updatePredictionValidator,
+} from './price.validator';
 
 const router = Router();
 const priceFreezeGuard = blockWhenFeatureFlagEnabled('priceFreeze', {
@@ -15,6 +23,46 @@ router.get('/', priceController.getPrices);
 
 router.get('/trends', priceController.getPriceTrends);
 router.post('/predict', priceController.predictPrice);
+router.get(
+  '/predictions',
+  authenticate,
+  validate(listPredictionsValidator),
+  priceController.listPredictions
+);
+router.post(
+  '/predictions',
+  authenticate,
+  authorize('admin', 'platform_admin', 'super_admin', 'trader', 'farmer'),
+  validate(createPredictionValidator),
+  priceController.createPrediction
+);
+router.get(
+  '/predictions/:predictionId',
+  authenticate,
+  validate(predictionIdValidator),
+  priceController.getPrediction
+);
+router.patch(
+  '/predictions/:predictionId',
+  authenticate,
+  authorize('admin', 'platform_admin', 'super_admin', 'trader', 'farmer'),
+  validate(updatePredictionValidator),
+  priceController.updatePrediction
+);
+router.delete(
+  '/predictions/:predictionId',
+  authenticate,
+  authorize('admin', 'platform_admin', 'super_admin', 'trader', 'farmer'),
+  validate(predictionIdValidator),
+  priceController.deletePrediction
+);
+router.post(
+  '/predictions/:predictionId/regenerate',
+  authenticate,
+  authorize('admin', 'platform_admin', 'super_admin', 'trader', 'farmer'),
+  validate(regeneratePredictionValidator),
+  priceController.regeneratePrediction
+);
 router.post(
   '/bulk-import',
   authenticate,

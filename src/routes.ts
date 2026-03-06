@@ -26,9 +26,10 @@ import marketIntelligenceRoutes from './modules/market-intelligence/marketIntell
 import organizationRoutes from './modules/organizations/organization.routes';
 import offerRoutes from './modules/offers/offer.routes';
 import userRoutes from './modules/users/user.routes';
-import platformControlRoutes from './modules/admin/platformControl.routes';
+import adminRoutes from './modules/admin/admin.routes';
 import logisticsRoutes from './modules/logistics/logistics.routes';
 import aggregationRoutes from './modules/aggregation/aggregation.routes';
+import financeRoutes from './modules/finance/finance.routes';
 import { ResponseHandler } from './common/utils/response';
 import config from './common/config';
 
@@ -64,9 +65,10 @@ router.use(`${API_VERSION}/market-intelligence`, marketIntelligenceRoutes); // M
 router.use(`${API_VERSION}/organizations`, organizationRoutes);   // Organizations (Co-ops)
 router.use(`${API_VERSION}/offers`, offerRoutes);                 // Marketplace Offers & Negotiation
 router.use(`${API_VERSION}/users`, userRoutes);                   // Admin User Management
-router.use(`${API_VERSION}/admin`, platformControlRoutes);        // Platform Controls
+router.use(`${API_VERSION}/admin`, adminRoutes);                  // Platform Controls + Admin Workspace
 router.use(`${API_VERSION}/logistics`, logisticsRoutes);          // Logistics & Distribution
 router.use(`${API_VERSION}/aggregation`, aggregationRoutes);      // Aggregation Workspace
+router.use(`${API_VERSION}/finance`, financeRoutes);              // Finance Workspace
 
 // Health check
 router.get(`${API_VERSION}/health`, (_req, res) => {

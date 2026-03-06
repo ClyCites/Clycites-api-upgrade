@@ -23,7 +23,31 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/err
 interface UserContext {
   id?: string;
   role?: string;
+  orgId?: string;
 }
+
+type MarketPriceStatus = 'captured' | 'validated' | 'published';
+
+const MARKET_PRICE_STATUS_TRANSITIONS: Record<MarketPriceStatus, MarketPriceStatus[]> = {
+  captured: ['captured', 'validated', 'published'],
+  validated: ['validated', 'published'],
+  published: ['published'],
+};
+
+const normalizeMarketPriceStatus = (value: unknown): MarketPriceStatus | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'captured' || normalized === 'validated' || normalized === 'published') {
+    return normalized;
+  }
+  return undefined;
+};
+
+const deriveMarketPriceStatus = (price: any): MarketPriceStatus => {
+  const explicit = normalizeMarketPriceStatus(price?.status);
+  if (explicit) return explicit;
+  return price?.isValid === false ? 'captured' : 'validated';
+};
 
 class PriceService {
   async addPrice(data: any, user?: UserContext) {
@@ -43,6 +67,11 @@ class PriceService {
     const existingMarket = await Market.findById(market);
     if (!existingMarket) throw new NotFoundError('Market not found');
 
+    const requestedStatus = normalizeMarketPriceStatus(data.status ?? data.uiStatus);
+    if ((data.status !== undefined || data.uiStatus !== undefined) && !requestedStatus) {
+      throw new BadRequestError('status must be one of captured, validated, published');
+    }
+
     const newPrice = new Price({
       product,
       market,
@@ -52,8 +81,11 @@ class PriceService {
       productType,
       quantity,
       unit,
+      status: requestedStatus || 'captured',
       lastUpdated: new Date(),
       addedBy: user.id,
+      createdBy: user.id,
+      organization: data.organizationId || user?.orgId,
     } as any);
 
     await newPrice.save();
@@ -62,11 +94,14 @@ class PriceService {
   }
 
   async getPrices(query: any) {
-    const { product, market, startDate, endDate, limit = 100 } = query;
+    const { product, market, startDate, endDate, limit = 100, organizationId } = query;
     const filter: any = {};
 
     if (product) filter.product = product;
     if (market && market !== 'all') filter.market = market;
+    if (organizationId) filter.organization = organizationId;
+    const requestedStatus = normalizeMarketPriceStatus(query.status ?? query.uiStatus);
+    if (requestedStatus) filter.status = requestedStatus;
 
     if (startDate || endDate) {
       filter.date = {};
@@ -108,6 +143,18 @@ class PriceService {
       if (!existingMarket) throw new NotFoundError('Market not found');
     }
 
+    const nextStatus = normalizeMarketPriceStatus(data.status ?? data.uiStatus);
+    if ((data.status !== undefined || data.uiStatus !== undefined) && !nextStatus) {
+      throw new BadRequestError('status must be one of captured, validated, published');
+    }
+
+    const currentStatus = deriveMarketPriceStatus(existingPrice);
+    const resolvedStatus = nextStatus || currentStatus;
+
+    if (!MARKET_PRICE_STATUS_TRANSITIONS[currentStatus].includes(resolvedStatus)) {
+      throw new BadRequestError(`Invalid market price status transition: ${currentStatus} -> ${resolvedStatus}`);
+    }
+
     const newPrice = new Price({
       product: product || existingPrice.product,
       market: market || existingPrice.market,
@@ -117,8 +164,11 @@ class PriceService {
       productType: productType || existingPrice.productType,
       quantity: quantity || existingPrice.quantity,
       unit: unit || existingPrice.unit,
+      status: resolvedStatus,
       lastUpdated: new Date(),
       addedBy: user?.id || (existingPrice as any).addedBy,
+      createdBy: user?.id || (existingPrice as any).createdBy || (existingPrice as any).addedBy,
+      organization: data.organizationId || (existingPrice as any).organization || user?.orgId,
     } as any);
 
     await newPrice.save();

@@ -14,6 +14,8 @@ import { NotificationType, NotificationChannel, NotificationPriority } from '../
 import PersonalWorkspaceService from '../users/personalWorkspace.service';
 import { AuditService } from '../audit';
 import Farmer from '../farmers/farmer.model';
+import OrganizationMember from '../organizations/organizationMember.model';
+import OrganizationService from '../organizations/organization.service';
 import { isSuperAdminRole } from '../../common/middleware/superAdmin';
 import {
   AppError,
@@ -184,6 +186,9 @@ class AuthService {
       profile,
       lastActiveAt: new Date(),
     });
+
+    // Every user must belong to an organization; default to "clycites"
+    await OrganizationService.ensureDefaultOrganizationMembership(user._id.toString());
 
     // Create personal workspace for individual user
     try {
@@ -1081,12 +1086,14 @@ class AuthService {
 
   private async generateAndStoreTokenPair(user: IUser, deviceId?: string) {
     const farmerId = await this.resolveFarmerId(user._id.toString());
+    const orgId = await this.resolvePrimaryOrganizationId(user._id.toString());
 
     const tokens = TokenUtil.generateTokenPair({
       id: user._id.toString(),
       email: user.email,
       role: user.role,
       farmerId,
+      orgId,
     });
 
     await RefreshToken.create({
@@ -1138,6 +1145,23 @@ class AuthService {
   private async resolveFarmerId(userId: string): Promise<string | undefined> {
     const farmer = await Farmer.findOne({ user: userId }).select('_id').lean();
     return farmer?._id ? farmer._id.toString() : undefined;
+  }
+
+  private async resolvePrimaryOrganizationId(userId: string): Promise<string | undefined> {
+    const existingMembership = await OrganizationMember.findOne({
+      user: userId,
+      status: 'active',
+    })
+      .sort({ joinedAt: 1, createdAt: 1 })
+      .select('organization')
+      .lean<{ organization?: { toString: () => string } }>();
+
+    if (existingMembership?.organization) {
+      return existingMembership.organization.toString();
+    }
+
+    const ensured = await OrganizationService.ensureDefaultOrganizationMembership(userId);
+    return ensured.organization._id.toString();
   }
 
   private async recordFailedLogin(user: IUser, context: LoginContext): Promise<boolean> {
