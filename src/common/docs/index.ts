@@ -27,6 +27,7 @@ import { offersPaths } from './paths/offers.paths';
 import { adminPaths } from './paths/admin.paths';
 import { logisticsPaths } from './paths/logistics.paths';
 import { aggregationPaths } from './paths/aggregation.paths';
+import { usersPaths } from './paths/users.paths';
 
 export const openApiSpec: OpenAPIV3_1.Document = {
   openapi: '3.1.0',
@@ -158,6 +159,7 @@ Headers returned: \`X-RateLimit-Limit\`, \`X-RateLimit-Remaining\`, \`X-RateLimi
     ...marketIntelligencePaths,
     ...organizationsPaths,
     ...offersPaths,
+    ...usersPaths,
     ...adminPaths,
     ...logisticsPaths,
     ...aggregationPaths,
