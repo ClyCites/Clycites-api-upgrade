@@ -1,4 +1,5 @@
 import User, { IUser, IUserProfile, UserRole } from '../users/user.model';
+import Role from '../users/role.model';
 import OTP from './otp.model';
 import RefreshToken from './refreshToken.model';
 import ImpersonationSession from './impersonationSession.model';
@@ -18,6 +19,12 @@ import OrganizationMember from '../organizations/organizationMember.model';
 import OrganizationService from '../organizations/organization.service';
 import { isSuperAdminRole } from '../../common/middleware/superAdmin';
 import {
+  getSelfRegisterRoleOptions,
+  SELF_REGISTER_ROLE_VALUES,
+  SelfRegisterRole,
+  SelfRegisterRoleOption,
+} from './selfRegisterRoles';
+import {
   AppError,
   BadRequestError,
   UnauthorizedError,
@@ -32,7 +39,7 @@ interface RegisterData {
   firstName: string;
   lastName: string;
   phone?: string;
-  role?: 'farmer' | 'buyer' | 'expert' | 'trader';
+  role?: SelfRegisterRole;
   timezone?: string;
   language?: string;
   profileImage?: string;
@@ -135,6 +142,36 @@ class AuthService {
   private readonly DEFAULT_IMPERSONATION_TTL_MINUTES = 15;
   private readonly MAX_SUPER_ADMIN_TOKEN_TTL_MINUTES = 30;
   private readonly DEFAULT_SUPER_ADMIN_TOKEN_TTL_MINUTES = 10;
+
+  async listRegistrationRoles(): Promise<SelfRegisterRoleOption[]> {
+    const configuredRoles = await Role.find({
+      scope: 'global',
+      status: 'active',
+      slug: { $in: [...SELF_REGISTER_ROLE_VALUES] },
+    })
+      .select('slug name description isDefault')
+      .lean<Array<{
+        slug: SelfRegisterRole;
+        name?: string;
+        description?: string;
+        isDefault?: boolean;
+      }>>();
+
+    const configuredRoleMap = new Map(
+      configuredRoles.map((role) => [role.slug, role] as const)
+    );
+
+    return getSelfRegisterRoleOptions().map((role) => {
+      const configuredRole = configuredRoleMap.get(role.role);
+
+      return {
+        role: role.role,
+        label: configuredRole?.name?.trim() || role.label,
+        description: configuredRole?.description?.trim() || role.description,
+        isDefault: configuredRole?.isDefault ?? role.isDefault,
+      };
+    });
+  }
 
   async register(data: RegisterData, context: LoginContext = {}) {
     const normalizedEmail = this.normalizeEmail(data.email);

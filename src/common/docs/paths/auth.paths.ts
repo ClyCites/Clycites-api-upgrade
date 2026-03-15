@@ -8,6 +8,39 @@ const ok = (description: string, dataSchema: object | object) => ({
 
 export const authPaths: Record<string, unknown> = {
 
+  '/api/v1/auth/register/roles': {
+    get: {
+      tags: ['Authentication'],
+      summary: 'List public registration roles',
+      description: 'Returns the public roles available for self-service account registration.',
+      operationId: 'listRegistrationRoles',
+      responses: {
+        200: {
+          description: 'Registration roles retrieved.',
+          content: {
+            'application/json': {
+              schema: {
+                allOf: [
+                  { $ref: '#/components/schemas/SuccessResponse' },
+                  {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/RegistrationRole' },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+        429: { $ref: '#/components/responses/TooManyRequests' },
+      },
+    },
+  },
+
   '/api/v1/auth/register': {
     post: {
       tags: ['Authentication'],

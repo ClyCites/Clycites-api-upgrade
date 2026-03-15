@@ -1,6 +1,6 @@
 import { body, param, query } from 'express-validator';
+import { SELF_REGISTER_ROLE_VALUES } from './selfRegisterRoles';
 
-const selfRegisterRoles = ['farmer', 'buyer', 'expert', 'trader'];
 const contactMethods = ['email', 'phone', 'sms', 'whatsapp', 'in_app'];
 const kycStatuses = ['not_started', 'pending', 'verified', 'rejected', 'expired'];
 const documentTypes = [
@@ -36,7 +36,7 @@ export const registerValidator = [
     .withMessage('Please provide a valid phone number'),
   body('role')
     .optional()
-    .isIn(selfRegisterRoles)
+    .isIn([...SELF_REGISTER_ROLE_VALUES])
     .withMessage('Invalid role'),
   body('timezone')
     .optional()

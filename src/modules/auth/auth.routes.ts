@@ -27,6 +27,11 @@ import {
 
 const router = Router();
 
+router.get(
+  '/register/roles',
+  authController.listRegistrationRoles
+);
+
 router.post(
   '/register',
   authLimiter,

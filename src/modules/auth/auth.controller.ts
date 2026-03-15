@@ -21,6 +21,15 @@ export class AuthController {
     }
   };
 
+  listRegistrationRoles = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const roles = await this.authService.listRegistrationRoles();
+      ResponseHandler.success(res, roles, 'Registration roles retrieved');
+    } catch (error) {
+      next(error);
+    }
+  };
+
   login = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, password } = req.body;

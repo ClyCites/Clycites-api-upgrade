@@ -183,6 +183,20 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
     },
   },
 
+  RegistrationRole: {
+    type: 'object',
+    required: ['role', 'label', 'description', 'isDefault'],
+    properties: {
+      role: { type: 'string', enum: ['farmer', 'buyer', 'trader', 'expert'], example: 'farmer' },
+      label: { type: 'string', example: 'Farmer' },
+      description: {
+        type: 'string',
+        example: 'Individual farmer with personal workspace - can operate independently without organization',
+      },
+      isDefault: { type: 'boolean', example: true },
+    },
+  },
+
   LoginRequest: {
     type: 'object',
     required: ['email', 'password'],
