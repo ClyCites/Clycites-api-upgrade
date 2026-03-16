@@ -470,6 +470,13 @@ export const forecastHistoryValidator = [
     .withMessage('limit must be 1-100'),
 ];
 
+export const refreshQueryValidator = [
+  query('force')
+    .optional()
+    .isBoolean()
+    .withMessage('force must be a boolean'),
+];
+
 // ============================================================================
 // Manual refresh (farmId param)
 // ============================================================================

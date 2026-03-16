@@ -662,7 +662,8 @@ export async function refreshForecast(req: AuthRequest, res: Response, next: Nex
     if (!profile) throw new AppError('Profile not found', 404);
     assertCanAccessProfile(req, profile);
 
-    const result = await weatherIngestService.manualRefresh(req.params.profileId);
+    const forceRefresh = req.query.force === 'true' || req.query.force === '1';
+    const result = await weatherIngestService.manualRefresh(req.params.profileId, { forceRefresh });
     sendSuccess(res, result, 'Profile forecast refresh triggered');
   } catch (error) {
     next(error);
@@ -1083,16 +1084,18 @@ export async function seedDefaultRules(req: AuthRequest, res: Response, next: Ne
 export async function manualRefresh(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { profileId } = req.params;
-    const result = await weatherIngestService.manualRefresh(profileId);
+    const forceRefresh = req.query.force === 'true' || req.query.force === '1';
+    const result = await weatherIngestService.manualRefresh(profileId, { forceRefresh });
     sendSuccess(res, result, 'Manual refresh triggered');
   } catch (error) {
     next(error);
   }
 }
 
-export async function refreshAllProfiles(_req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function refreshAllProfiles(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const results = await weatherIngestService.refreshAllProfiles();
+    const forceRefresh = req.query.force === 'true' || req.query.force === '1';
+    const results = await weatherIngestService.refreshAllProfiles({ forceRefresh });
     sendSuccess(res, { count: results.length, results }, 'Refresh cycle completed');
   } catch (error) {
     next(error);
@@ -1129,8 +1132,7 @@ export async function pruneSnapshots(req: Request, res: Response, next: NextFunc
 
 export async function getProviderStatus(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const providers = weatherProviderService.getProviderNames();
-    sendSuccess(res, { providers }, 'Provider status');
+    sendSuccess(res, weatherProviderService.getProviderStatus(), 'Provider status');
   } catch (error) {
     next(error);
   }

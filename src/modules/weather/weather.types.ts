@@ -389,6 +389,44 @@ export interface IWeatherRuleDocument extends IWeatherRule, Document {}
 // PROVIDER LAYER
 // ============================================================================
 
+export type ProviderCacheTier = 'live' | 'memory' | 'persistent';
+
+export interface IProviderCacheMetadata {
+  tier: ProviderCacheTier;
+  stale: boolean;
+  cacheKey: string;
+  freshUntil?: Date;
+  staleUntil?: Date;
+}
+
+export interface IWeatherFetchOptions {
+  forceRefresh?: boolean;
+  allowStale?: boolean;
+}
+
+export interface IWeatherProviderCache {
+  kind: 'current' | 'forecast';
+  cacheKey: string;
+  locationKey: string;
+  latitude: number;
+  longitude: number;
+  horizon?: ForecastHorizon;
+  source: DataSource;
+  fetchedAt: Date;
+  freshUntil: Date;
+  staleUntil: Date;
+  providerExpiresAt?: Date;
+  providerRef?: string;
+  modelVersion?: string;
+  reading?: IWeatherReading;
+  predictions?: IForecastPrediction[];
+  rawPayload?: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IWeatherProviderCacheDocument extends IWeatherProviderCache, Document {}
+
 /** Normalised response returned by any weather provider adapter */
 export interface IProviderCurrentResponse {
   source: DataSource;
@@ -396,6 +434,7 @@ export interface IProviderCurrentResponse {
   reading: IWeatherReading;
   providerRef?: string;
   raw?: Record<string, unknown>;
+  cache?: IProviderCacheMetadata;
 }
 
 export interface IProviderForecastResponse {
@@ -406,13 +445,14 @@ export interface IProviderForecastResponse {
   modelVersion?: string;
   expiresAt: Date;
   raw?: Record<string, unknown>;
+  cache?: IProviderCacheMetadata;
 }
 
 /** Contract every provider adapter must fulfil */
 export interface IWeatherProvider {
   name: DataSource;
-  fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse>;
-  fetchForecast(lat: number, lng: number, horizon: ForecastHorizon): Promise<IProviderForecastResponse>;
+  fetchCurrent(lat: number, lng: number, options?: IWeatherFetchOptions): Promise<IProviderCurrentResponse>;
+  fetchForecast(lat: number, lng: number, horizon: ForecastHorizon, options?: IWeatherFetchOptions): Promise<IProviderForecastResponse>;
 }
 
 // ============================================================================

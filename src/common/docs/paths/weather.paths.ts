@@ -222,7 +222,10 @@ export const weatherPaths: Record<string, unknown> = {
       summary: 'Refresh forecast for a selected profile',
       operationId: 'refreshProfileForecast',
       security: auth,
-      parameters: [profileIdParam],
+      parameters: [
+        profileIdParam,
+        { name: 'force', in: 'query', schema: { type: 'boolean', default: false }, description: 'Bypass cache and request fresh provider data immediately.' },
+      ],
       responses: {
         200: { description: 'Forecast refresh triggered.' },
         401: { $ref: '#/components/responses/Unauthorized' },
@@ -559,6 +562,9 @@ export const weatherPaths: Record<string, unknown> = {
       summary: 'Refresh weather data for all profiles',
       operationId: 'adminRefreshAllProfiles',
       security: auth,
+      parameters: [
+        { name: 'force', in: 'query', schema: { type: 'boolean', default: false }, description: 'Bypass cache and fetch fresh provider data for all profiles.' },
+      ],
       responses: { 200: { description: 'Refresh triggered.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
@@ -569,7 +575,10 @@ export const weatherPaths: Record<string, unknown> = {
       summary: 'Manually refresh a single farm profile',
       operationId: 'adminRefreshProfile',
       security: auth,
-      parameters: [profileIdParam],
+      parameters: [
+        profileIdParam,
+        { name: 'force', in: 'query', schema: { type: 'boolean', default: false }, description: 'Bypass cache and fetch fresh provider data for this profile.' },
+      ],
       responses: { 200: { description: 'Profile refreshed.' }, 403: { $ref: '#/components/responses/Forbidden' }, 404: { $ref: '#/components/responses/NotFound' } },
     },
   },
@@ -607,10 +616,10 @@ export const weatherPaths: Record<string, unknown> = {
   '/api/v1/weather/admin/providers': {
     get: {
       tags: ['Weather', 'Admin'],
-      summary: 'Get weather provider health status',
+      summary: 'Get weather provider and cache status',
       operationId: 'adminGetProviderStatus',
       security: auth,
-      responses: { 200: { description: 'Provider health metrics.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      responses: { 200: { description: 'Provider health metrics and cache policy.' }, 403: { $ref: '#/components/responses/Forbidden' } },
     },
   },
 

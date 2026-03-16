@@ -155,7 +155,7 @@ router.get(
 router.post(
   '/profiles/:profileId/forecast/refresh',
   authenticate,
-  validate(validators.profileIdParamValidator),
+  validate([...validators.profileIdParamValidator, ...validators.refreshQueryValidator]),
   controller.refreshForecast
 );
 
@@ -310,6 +310,7 @@ router.post(
   '/admin/refresh',
   authenticate,
   authorize('platform_admin'),
+  validate(validators.refreshQueryValidator),
   controller.refreshAllProfiles
 );
 
@@ -317,7 +318,7 @@ router.post(
   '/admin/profiles/:profileId/refresh',
   authenticate,
   authorize('platform_admin'),
-  validate(validators.profileIdParamValidator),
+  validate([...validators.profileIdParamValidator, ...validators.refreshQueryValidator]),
   controller.manualRefresh
 );
 

@@ -278,7 +278,7 @@ describe('Weather workspace controller contract', () => {
 
     const refreshReq = {
       params: { profileId: profile._id },
-      query: {},
+      query: { force: 'true' },
       body: {},
       headers: {},
       socket: { remoteAddress: '127.0.0.1' },
@@ -289,7 +289,7 @@ describe('Weather workspace controller contract', () => {
     await controller.refreshForecast(refreshReq, refreshRes, next);
 
     expect(next).not.toHaveBeenCalled();
-    expect(mockIngestService.manualRefresh).toHaveBeenCalledWith(profile._id);
+    expect(mockIngestService.manualRefresh).toHaveBeenCalledWith(profile._id, { forceRefresh: true });
     expect(refreshRes.payload.success).toBe(true);
 
     const forecastRows = [{ _id: '507f1f77bcf86cd799439113', horizon: 'daily' }];

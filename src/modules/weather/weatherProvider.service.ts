@@ -14,6 +14,7 @@
 
 import axios from 'axios';
 import logger from '../../common/utils/logger';
+import WeatherProviderCache from './weatherProviderCache.model';
 import {
   IWeatherProvider,
   IProviderCurrentResponse,
@@ -22,6 +23,8 @@ import {
   DataSource,
   IWeatherReading,
   IForecastPrediction,
+  IWeatherFetchOptions,
+  ProviderCacheTier,
 } from './weather.types';
 
 // ============================================================================
@@ -31,6 +34,12 @@ import {
 interface ICacheEntry<T> {
   data: T;
   expiresAt: number; // epoch ms
+}
+
+interface ICachePolicy {
+  memoryTtlMs: number;
+  freshTtlMs: number;
+  staleTtlMs: number;
 }
 
 // ============================================================================
@@ -67,7 +76,7 @@ class OpenMeteoProvider implements IWeatherProvider {
     return record;
   }
 
-  async fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse> {
+  async fetchCurrent(lat: number, lng: number, _options?: IWeatherFetchOptions): Promise<IProviderCurrentResponse> {
     const url = `${this.baseUrl}/forecast`;
     const res = await axios.get(url, {
       params: {
@@ -158,7 +167,12 @@ class OpenMeteoProvider implements IWeatherProvider {
     };
   }
 
-  async fetchForecast(lat: number, lng: number, horizon: ForecastHorizon): Promise<IProviderForecastResponse> {
+  async fetchForecast(
+    lat: number,
+    lng: number,
+    horizon: ForecastHorizon,
+    _options?: IWeatherFetchOptions
+  ): Promise<IProviderForecastResponse> {
     const isHourly = horizon === ForecastHorizon.HOURLY;
     const forecastDays = horizon === ForecastHorizon.WEEKLY ? 14 : 7;
     const url = `${this.baseUrl}/forecast`;
@@ -301,7 +315,7 @@ class TomorrowIoProvider implements IWeatherProvider {
     this.apiKey = apiKey;
   }
 
-  async fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse> {
+  async fetchCurrent(lat: number, lng: number, _options?: IWeatherFetchOptions): Promise<IProviderCurrentResponse> {
     const url = `${this.baseUrl}/weather/realtime`;
     const res = await axios.get(url, {
       params: {
@@ -338,7 +352,12 @@ class TomorrowIoProvider implements IWeatherProvider {
     };
   }
 
-  async fetchForecast(lat: number, lng: number, horizon: ForecastHorizon): Promise<IProviderForecastResponse> {
+  async fetchForecast(
+    lat: number,
+    lng: number,
+    horizon: ForecastHorizon,
+    _options?: IWeatherFetchOptions
+  ): Promise<IProviderForecastResponse> {
     const timestep = horizon === ForecastHorizon.HOURLY ? '1h' : '1d';
     const url = `${this.baseUrl}/weather/forecast`;
     const res = await axios.get(url, {
@@ -395,16 +414,31 @@ class WeatherProviderService {
   private readonly providers = new Map<DataSource, IWeatherProvider>();
   private readonly fallbackOrder: DataSource[] = [];
 
-  // Cache keyed by "source:lat:lng"
+  // Cache keyed by rounded lat/lng
   private readonly currentCache = new Map<string, ICacheEntry<IProviderCurrentResponse>>();
   private readonly forecastCache = new Map<string, ICacheEntry<IProviderForecastResponse>>();
 
   // Rate-limit tracking per provider
   private readonly rateLimits = new Map<DataSource, IRateLimitState>();
 
-  // Cache TTLs (ms)
-  private readonly CURRENT_TTL_MS  = 10 * 60 * 1000;  // 10 min
-  private readonly FORECAST_TTL_MS = 60 * 60 * 1000;  // 1 h
+  // Cache policies
+  private readonly CURRENT_POLICY: ICachePolicy = {
+    memoryTtlMs: 10 * 60 * 1000,
+    freshTtlMs: 10 * 60 * 1000,
+    staleTtlMs: 2 * 60 * 60 * 1000,
+  };
+
+  private readonly HOURLY_FORECAST_POLICY: ICachePolicy = {
+    memoryTtlMs: 60 * 60 * 1000,
+    freshTtlMs: 60 * 60 * 1000,
+    staleTtlMs: 6 * 60 * 60 * 1000,
+  };
+
+  private readonly DAILY_FORECAST_POLICY: ICachePolicy = {
+    memoryTtlMs: 6 * 60 * 60 * 1000,
+    freshTtlMs: 6 * 60 * 60 * 1000,
+    staleTtlMs: 24 * 60 * 60 * 1000,
+  };
 
   constructor() {
     this.initDefaultProviders();
@@ -437,10 +471,26 @@ class WeatherProviderService {
 
   // ---- Public API -----------------------------------------------------------
 
-  async fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse> {
-    const cacheKey = `current:${lat.toFixed(4)}:${lng.toFixed(4)}`;
-    const cached = this.getFromCache(this.currentCache, cacheKey);
-    if (cached) return cached;
+  async fetchCurrent(
+    lat: number,
+    lng: number,
+    options: IWeatherFetchOptions = {}
+  ): Promise<IProviderCurrentResponse> {
+    const policy = this.CURRENT_POLICY;
+    const cacheKey = this.buildCurrentCacheKey(lat, lng);
+
+    if (!options.forceRefresh) {
+      const cached = this.getFromCache(this.currentCache, cacheKey);
+      if (cached) {
+        return this.withCacheMetadata(cached, 'memory', cached.cache?.stale ?? false, cacheKey);
+      }
+
+      const persistent = await this.getPersistentCurrentCache(cacheKey);
+      if (persistent) {
+        this.setCache(this.currentCache, cacheKey, persistent, policy.memoryTtlMs);
+        return persistent;
+      }
+    }
 
     for (const sourceName of this.fallbackOrder) {
       if (this.isRateLimited(sourceName)) {
@@ -449,44 +499,91 @@ class WeatherProviderService {
       }
       const provider = this.providers.get(sourceName)!;
       try {
-        const result = await provider.fetchCurrent(lat, lng);
-        this.setCache(this.currentCache, cacheKey, result, this.CURRENT_TTL_MS);
-        return result;
+        const result = await provider.fetchCurrent(lat, lng, options);
+        const freshUntil = new Date(result.fetchedAt.getTime() + policy.freshTtlMs);
+        const staleUntil = new Date(result.fetchedAt.getTime() + policy.staleTtlMs);
+        const cachedResult = this.withCacheMetadata(result, 'live', false, cacheKey, freshUntil, staleUntil);
+        this.setCache(this.currentCache, cacheKey, cachedResult, policy.memoryTtlMs);
+        await this.persistCurrentCache(lat, lng, cacheKey, cachedResult, freshUntil, staleUntil);
+        return cachedResult;
       } catch (err) {
         logger.warn(`[WeatherProvider] ${sourceName} fetchCurrent failed: ${(err as Error).message}`);
       }
     }
+
+    if (options.allowStale !== false) {
+      const stale = await this.getPersistentCurrentCache(cacheKey, true);
+      if (stale) {
+        this.setCache(this.currentCache, cacheKey, stale, this.getStaleMemoryTtlMs(stale.cache?.staleUntil));
+        return stale;
+      }
+    }
+
     throw new Error('All weather providers failed for fetchCurrent. Check API keys and connectivity.');
   }
 
-  async fetchForecast(lat: number, lng: number, horizon: ForecastHorizon): Promise<IProviderForecastResponse> {
-    const cacheKey = `forecast:${horizon}:${lat.toFixed(4)}:${lng.toFixed(4)}`;
-    const cached = this.getFromCache(this.forecastCache, cacheKey);
-    if (cached) return cached;
+  async fetchForecast(
+    lat: number,
+    lng: number,
+    horizon: ForecastHorizon,
+    options: IWeatherFetchOptions = {}
+  ): Promise<IProviderForecastResponse> {
+    const policy = this.getForecastPolicy(horizon);
+    const cacheKey = this.buildForecastCacheKey(lat, lng, horizon);
+
+    if (!options.forceRefresh) {
+      const cached = this.getFromCache(this.forecastCache, cacheKey);
+      if (cached) {
+        return this.withCacheMetadata(cached, 'memory', cached.cache?.stale ?? false, cacheKey);
+      }
+
+      const persistent = await this.getPersistentForecastCache(cacheKey);
+      if (persistent) {
+        this.setCache(this.forecastCache, cacheKey, persistent, policy.memoryTtlMs);
+        return persistent;
+      }
+    }
 
     for (const sourceName of this.fallbackOrder) {
       if (this.isRateLimited(sourceName)) continue;
       const provider = this.providers.get(sourceName)!;
       try {
-        const result = await provider.fetchForecast(lat, lng, horizon);
-        this.setCache(this.forecastCache, cacheKey, result, this.FORECAST_TTL_MS);
-        return result;
+        const result = await provider.fetchForecast(lat, lng, horizon, options);
+        const freshUntil = new Date(result.fetchedAt.getTime() + policy.freshTtlMs);
+        const staleUntil = new Date(result.fetchedAt.getTime() + policy.staleTtlMs);
+        const cachedResult = this.withCacheMetadata(result, 'live', false, cacheKey, freshUntil, staleUntil);
+        this.setCache(this.forecastCache, cacheKey, cachedResult, policy.memoryTtlMs);
+        await this.persistForecastCache(lat, lng, horizon, cacheKey, cachedResult, freshUntil, staleUntil);
+        return cachedResult;
       } catch (err) {
         logger.warn(`[WeatherProvider] ${sourceName} fetchForecast failed: ${(err as Error).message}`);
       }
     }
+
+    if (options.allowStale !== false) {
+      const stale = await this.getPersistentForecastCache(cacheKey, true);
+      if (stale) {
+        this.setCache(this.forecastCache, cacheKey, stale, this.getStaleMemoryTtlMs(stale.cache?.staleUntil));
+        return stale;
+      }
+    }
+
     throw new Error('All weather providers failed for fetchForecast. Check API keys and connectivity.');
   }
 
   /** Manually bust cache for a location (e.g. after test or manual trigger) */
   bustCache(lat: number, lng: number): void {
-    const prefix4 = `${lat.toFixed(4)}:${lng.toFixed(4)}`;
+    const prefix4 = this.buildLocationKey(lat, lng);
     for (const key of this.currentCache.keys()) {
       if (key.includes(prefix4)) this.currentCache.delete(key);
     }
     for (const key of this.forecastCache.keys()) {
       if (key.includes(prefix4)) this.forecastCache.delete(key);
     }
+
+    WeatherProviderCache.deleteMany({ locationKey: prefix4 }).catch((err) => {
+      logger.warn(`[WeatherProvider] Failed to clear persistent cache for ${prefix4}: ${(err as Error).message}`);
+    });
   }
 
   /** Signal that a provider has been rate-limited; backs off for 30 min */
@@ -499,7 +596,204 @@ class WeatherProviderService {
     return [...this.fallbackOrder];
   }
 
+  getProviderStatus(): {
+    providers: DataSource[];
+    cache: {
+      current: { memoryMinutes: number; freshMinutes: number; staleMinutes: number };
+      forecastHourly: { memoryMinutes: number; freshMinutes: number; staleMinutes: number };
+      forecastDaily: { memoryMinutes: number; freshMinutes: number; staleMinutes: number };
+    };
+  } {
+    return {
+      providers: this.getProviderNames(),
+      cache: {
+        current: this.toMinutes(this.CURRENT_POLICY),
+        forecastHourly: this.toMinutes(this.HOURLY_FORECAST_POLICY),
+        forecastDaily: this.toMinutes(this.DAILY_FORECAST_POLICY),
+      },
+    };
+  }
+
   // ---- Cache Helpers --------------------------------------------------------
+
+  private buildLocationKey(lat: number, lng: number): string {
+    return `${lat.toFixed(4)}:${lng.toFixed(4)}`;
+  }
+
+  private buildCurrentCacheKey(lat: number, lng: number): string {
+    return `current:${this.buildLocationKey(lat, lng)}`;
+  }
+
+  private buildForecastCacheKey(lat: number, lng: number, horizon: ForecastHorizon): string {
+    return `forecast:${horizon}:${this.buildLocationKey(lat, lng)}`;
+  }
+
+  private getForecastPolicy(horizon: ForecastHorizon): ICachePolicy {
+    return horizon === ForecastHorizon.HOURLY
+      ? this.HOURLY_FORECAST_POLICY
+      : this.DAILY_FORECAST_POLICY;
+  }
+
+  private withCacheMetadata<T extends IProviderCurrentResponse | IProviderForecastResponse>(
+    data: T,
+    tier: ProviderCacheTier,
+    stale: boolean,
+    cacheKey: string,
+    freshUntil?: Date,
+    staleUntil?: Date
+  ): T {
+    return {
+      ...data,
+      cache: {
+        tier,
+        stale,
+        cacheKey,
+        freshUntil: freshUntil ?? data.cache?.freshUntil,
+        staleUntil: staleUntil ?? data.cache?.staleUntil,
+      },
+    };
+  }
+
+  private async getPersistentCurrentCache(
+    cacheKey: string,
+    includeStale = false
+  ): Promise<IProviderCurrentResponse | null> {
+    const now = new Date();
+    const doc = await WeatherProviderCache.findOne({
+      kind: 'current',
+      cacheKey,
+      ...(includeStale ? { staleUntil: { $gt: now } } : { freshUntil: { $gt: now } }),
+    })
+      .select('+rawPayload')
+      .lean();
+
+    if (!doc?.reading) return null;
+
+    const stale = new Date(doc.freshUntil) <= now;
+    return this.withCacheMetadata(
+      {
+        source: doc.source,
+        fetchedAt: new Date(doc.fetchedAt),
+        reading: doc.reading as IWeatherReading,
+        providerRef: doc.providerRef ?? undefined,
+        raw: doc.rawPayload ?? undefined,
+      },
+      'persistent',
+      stale,
+      cacheKey,
+      new Date(doc.freshUntil),
+      new Date(doc.staleUntil)
+    );
+  }
+
+  private async getPersistentForecastCache(
+    cacheKey: string,
+    includeStale = false
+  ): Promise<IProviderForecastResponse | null> {
+    const now = new Date();
+    const doc = await WeatherProviderCache.findOne({
+      kind: 'forecast',
+      cacheKey,
+      ...(includeStale ? { staleUntil: { $gt: now } } : { freshUntil: { $gt: now } }),
+    })
+      .select('+rawPayload')
+      .lean();
+
+    if (!doc?.horizon || !Array.isArray(doc.predictions)) return null;
+
+    const stale = new Date(doc.freshUntil) <= now;
+    return this.withCacheMetadata(
+      {
+        source: doc.source,
+        fetchedAt: new Date(doc.fetchedAt),
+        horizon: doc.horizon as ForecastHorizon,
+        predictions: doc.predictions as IForecastPrediction[],
+        modelVersion: doc.modelVersion ?? undefined,
+        expiresAt: doc.providerExpiresAt ? new Date(doc.providerExpiresAt) : new Date(doc.staleUntil),
+        raw: doc.rawPayload ?? undefined,
+      },
+      'persistent',
+      stale,
+      cacheKey,
+      new Date(doc.freshUntil),
+      new Date(doc.staleUntil)
+    );
+  }
+
+  private async persistCurrentCache(
+    lat: number,
+    lng: number,
+    cacheKey: string,
+    data: IProviderCurrentResponse,
+    freshUntil: Date,
+    staleUntil: Date
+  ): Promise<void> {
+    await WeatherProviderCache.findOneAndUpdate(
+      { cacheKey },
+      {
+        $set: {
+          kind: 'current',
+          cacheKey,
+          locationKey: this.buildLocationKey(lat, lng),
+          latitude: lat,
+          longitude: lng,
+          horizon: null,
+          source: data.source,
+          fetchedAt: data.fetchedAt,
+          freshUntil,
+          staleUntil,
+          providerExpiresAt: null,
+          providerRef: data.providerRef ?? null,
+          modelVersion: null,
+          reading: data.reading,
+          predictions: [],
+          rawPayload: data.raw ?? null,
+        },
+      },
+      {
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+  }
+
+  private async persistForecastCache(
+    lat: number,
+    lng: number,
+    horizon: ForecastHorizon,
+    cacheKey: string,
+    data: IProviderForecastResponse,
+    freshUntil: Date,
+    staleUntil: Date
+  ): Promise<void> {
+    await WeatherProviderCache.findOneAndUpdate(
+      { cacheKey },
+      {
+        $set: {
+          kind: 'forecast',
+          cacheKey,
+          locationKey: this.buildLocationKey(lat, lng),
+          latitude: lat,
+          longitude: lng,
+          horizon,
+          source: data.source,
+          fetchedAt: data.fetchedAt,
+          freshUntil,
+          staleUntil,
+          providerExpiresAt: data.expiresAt,
+          providerRef: null,
+          modelVersion: data.modelVersion ?? null,
+          reading: null,
+          predictions: data.predictions,
+          rawPayload: data.raw ?? null,
+        },
+      },
+      {
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+  }
 
   private getFromCache<T>(map: Map<string, ICacheEntry<T>>, key: string): T | null {
     const entry = map.get(key);
@@ -515,6 +809,11 @@ class WeatherProviderService {
     map.set(key, { data, expiresAt: Date.now() + ttlMs });
   }
 
+  private getStaleMemoryTtlMs(staleUntil?: Date): number {
+    if (!staleUntil) return 60 * 1000;
+    return Math.max(1000, Math.min(5 * 60 * 1000, staleUntil.getTime() - Date.now()));
+  }
+
   private isRateLimited(source: DataSource): boolean {
     const state = this.rateLimits.get(source);
     if (!state) return false;
@@ -523,6 +822,18 @@ class WeatherProviderService {
       return false;
     }
     return state.remaining === 0;
+  }
+
+  private toMinutes(policy: ICachePolicy): {
+    memoryMinutes: number;
+    freshMinutes: number;
+    staleMinutes: number;
+  } {
+    return {
+      memoryMinutes: Math.round(policy.memoryTtlMs / 60000),
+      freshMinutes: Math.round(policy.freshTtlMs / 60000),
+      staleMinutes: Math.round(policy.staleTtlMs / 60000),
+    };
   }
 }
 

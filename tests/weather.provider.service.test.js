@@ -2,13 +2,33 @@ jest.mock('axios', () => ({
   get: jest.fn(),
 }));
 
+const mockCacheModel = {
+  findOne: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  deleteMany: jest.fn(),
+};
+
+jest.mock('../dist/modules/weather/weatherProviderCache.model', () => ({
+  __esModule: true,
+  default: mockCacheModel,
+}));
+
 const axios = require('axios');
 const { OpenMeteoProvider, weatherProviderService } = require('../dist/modules/weather/weatherProvider.service');
 const { ForecastHorizon } = require('../dist/modules/weather/weather.types');
 
+const createFindOneQuery = (value) => {
+  const lean = jest.fn().mockResolvedValue(value);
+  const select = jest.fn().mockReturnValue({ lean });
+  return { select, lean };
+};
+
 describe('Open-Meteo weather provider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCacheModel.findOne.mockReturnValue(createFindOneQuery(null));
+    mockCacheModel.findOneAndUpdate.mockResolvedValue(null);
+    mockCacheModel.deleteMany.mockResolvedValue({ deletedCount: 0 });
   });
 
   test('maps current conditions from Open-Meteo into the internal schema', async () => {
@@ -204,5 +224,76 @@ describe('Open-Meteo weather provider', () => {
 
   test('registers Open-Meteo as an available provider', () => {
     expect(weatherProviderService.getProviderNames()).toContain('open_meteo');
+  });
+
+  test('uses persistent current cache before calling the provider again', async () => {
+    const lat = 0.4012;
+    const lng = 32.6013;
+    const now = Date.now();
+    weatherProviderService.bustCache(lat, lng);
+
+    mockCacheModel.findOne.mockReturnValueOnce(createFindOneQuery({
+      source: 'open_meteo',
+      fetchedAt: new Date(now - 2 * 60 * 1000),
+      freshUntil: new Date(now + 8 * 60 * 1000),
+      staleUntil: new Date(now + 2 * 60 * 60 * 1000),
+      providerRef: '2026-03-16T09:00',
+      reading: {
+        temperatureCelsius: 24.1,
+        humidity: 68,
+      },
+      rawPayload: { current: { time: '2026-03-16T09:00' } },
+    }));
+
+    const result = await weatherProviderService.fetchCurrent(lat, lng);
+
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(result.reading).toMatchObject({
+      temperatureCelsius: 24.1,
+      humidity: 68,
+    });
+    expect(result.cache).toMatchObject({
+      tier: 'persistent',
+      stale: false,
+    });
+  });
+
+  test('falls back to stale persistent forecast cache when the provider request fails', async () => {
+    const lat = 0.5023;
+    const lng = 32.7124;
+    weatherProviderService.bustCache(lat, lng);
+
+    mockCacheModel.findOne.mockReturnValueOnce(createFindOneQuery({
+      source: 'open_meteo',
+      horizon: 'daily',
+      fetchedAt: new Date('2026-03-16T06:00:00.000Z'),
+      freshUntil: new Date(Date.now() - 60 * 1000),
+      staleUntil: new Date(Date.now() + 60 * 60 * 1000),
+      providerExpiresAt: new Date('2026-03-17T23:59:59.000Z'),
+      predictions: [
+        {
+          timestamp: new Date('2026-03-17T00:00:00.000Z'),
+          temperatureCelsius: 28.4,
+        },
+      ],
+      rawPayload: { daily: { time: ['2026-03-17'] } },
+    }));
+    axios.get.mockRejectedValueOnce(new Error('timeout'));
+
+    const result = await weatherProviderService.fetchForecast(
+      lat,
+      lng,
+      ForecastHorizon.DAILY,
+      { forceRefresh: true }
+    );
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(result.predictions[0]).toMatchObject({
+      temperatureCelsius: 28.4,
+    });
+    expect(result.cache).toMatchObject({
+      tier: 'persistent',
+      stale: true,
+    });
   });
 });

@@ -26,6 +26,8 @@ import {
   IngestJobStatus,
   IIngestResult,
   IWeatherReading,
+  IWeatherFetchOptions,
+  IProviderCacheMetadata,
 } from './weather.types';
 
 // ============================================================================
@@ -99,7 +101,7 @@ class WeatherIngestService {
    * Refresh all active farm weather profiles.
    * Processes profiles one-at-a-time to avoid hammering provider APIs.
    */
-  async refreshAllProfiles(): Promise<IIngestResult[]> {
+  async refreshAllProfiles(options: IWeatherFetchOptions = {}): Promise<IIngestResult[]> {
     if (this.isRunning) {
       logger.warn('[WeatherIngest] Previous refresh still running, skipping cycle');
       return [];
@@ -113,7 +115,7 @@ class WeatherIngestService {
       logger.info(`[WeatherIngest] Refreshing ${profiles.length} active profile(s)`);
 
       for (const profile of profiles) {
-        const result = await this.refreshProfile(profile._id.toString());
+        const result = await this.refreshProfile(profile._id.toString(), options);
         results.push(result);
       }
 
@@ -128,7 +130,10 @@ class WeatherIngestService {
 
   // ---- Single Profile Refresh ----------------------------------------------
 
-  async refreshProfile(profileId: string): Promise<IIngestResult> {
+  async refreshProfile(
+    profileId: string,
+    options: IWeatherFetchOptions = {}
+  ): Promise<IIngestResult> {
     const start = Date.now();
     const objectId = new mongoose.Types.ObjectId(profileId);
 
@@ -142,10 +147,13 @@ class WeatherIngestService {
 
     try {
       // 1 — Fetch current conditions
-      const currentData = await weatherProviderService.fetchCurrent(lat, lng);
+      const currentData = await weatherProviderService.fetchCurrent(lat, lng, options);
 
       // 2 — Quality check
-      const qualityFlags = this.runQualityCheck(currentData.reading);
+      const qualityFlags = [
+        ...this.runQualityCheck(currentData.reading),
+        ...this.getCacheQualityFlags(currentData.cache),
+      ];
 
       // 3 — Deduplication check
       const isDuplicate = await this.isDuplicateSnapshot(
@@ -177,7 +185,7 @@ class WeatherIngestService {
       const forecastIds: string[] = [];
       for (const horizon of [ForecastHorizon.HOURLY, ForecastHorizon.DAILY]) {
         try {
-          const fId = await this.updateForecast(profile, horizon);
+          const fId = await this.updateForecast(profile, horizon, options);
           if (fId) forecastIds.push(fId);
         } catch (fErr) {
           logger.warn(`[WeatherIngest] Forecast (${horizon}) failed for farm ${farmId}: ${(fErr as Error).message}`);
@@ -213,21 +221,37 @@ class WeatherIngestService {
 
   async updateForecast(
     profile: IFarmWeatherProfileDocument,
-    horizon: ForecastHorizon
+    horizon: ForecastHorizon,
+    options: IWeatherFetchOptions = {}
   ): Promise<string | null> {
     const [lng, lat] = profile.geoLocation.coordinates;
-    const forecastData = await weatherProviderService.fetchForecast(lat, lng, horizon);
+    const forecastData = await weatherProviderService.fetchForecast(lat, lng, horizon, options);
 
     if (forecastData.predictions.length === 0) return null;
+
+    const periodStart = forecastData.predictions[0].timestamp;
+    const periodEnd   = forecastData.predictions[forecastData.predictions.length - 1].timestamp;
+    const activeForecast = await Forecast.findOne({
+      farmId: profile.farmId,
+      horizon,
+      isSuperseded: false,
+    }).sort({ fetchedAt: -1 });
+
+    if (
+      activeForecast &&
+      activeForecast.provider === forecastData.source &&
+      activeForecast.fetchedAt.getTime() === forecastData.fetchedAt.getTime() &&
+      activeForecast.forecastPeriodStart.getTime() === periodStart.getTime() &&
+      activeForecast.forecastPeriodEnd.getTime() === periodEnd.getTime()
+    ) {
+      return activeForecast._id?.toString() ?? null;
+    }
 
     // Mark previous forecasts as superseded
     await Forecast.updateMany(
       { farmId: profile.farmId, horizon, isSuperseded: false },
       { $set: { isSuperseded: true } }
     );
-
-    const periodStart = forecastData.predictions[0].timestamp;
-    const periodEnd   = forecastData.predictions[forecastData.predictions.length - 1].timestamp;
 
     const created = await Forecast.create({
       farmId:             profile.farmId,
@@ -284,12 +308,28 @@ class WeatherIngestService {
     return flags;
   }
 
+  private getCacheQualityFlags(cache?: IProviderCacheMetadata): string[] {
+    if (!cache) return [];
+
+    const flags: string[] = [];
+    if (cache.tier === 'persistent') {
+      flags.push('persistent_cache');
+    }
+    if (cache.stale) {
+      flags.push('stale_cache');
+    }
+    return flags;
+  }
+
   // ---- Manual Trigger ------------------------------------------------------
 
   /** Force a refresh for a specific farm (e.g. from admin API) */
-  async manualRefresh(profileId: string): Promise<IIngestResult> {
+  async manualRefresh(
+    profileId: string,
+    options: IWeatherFetchOptions = {}
+  ): Promise<IIngestResult> {
     logger.info(`[WeatherIngest] Manual refresh triggered for profile ${profileId}`);
-    return this.refreshProfile(profileId);
+    return this.refreshProfile(profileId, options);
   }
 
   // ---- Cleanup -------------------------------------------------------------
