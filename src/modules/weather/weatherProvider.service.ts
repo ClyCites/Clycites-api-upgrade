@@ -2,7 +2,7 @@
  * Weather Provider Service
  *
  * Provider-agnostic ingestion layer with:
- * - Pluggable adapter registry (OpenWeatherMap, Tomorrow.io, …)
+ * - Pluggable adapter registry (Open-Meteo, Tomorrow.io, …)
  * - In-process TTL cache per provider × farm location
  * - Automatic fallback when the primary provider fails
  * - Rate-limit guard per provider
@@ -43,88 +43,153 @@ interface IRateLimitState {
 }
 
 // ============================================================================
-// OpenWeatherMap Adapter
+// Open-Meteo Adapter
 // ============================================================================
 
-class OpenWeatherMapProvider implements IWeatherProvider {
-  readonly name = DataSource.OPEN_WEATHER_MAP;
-  private readonly apiKey: string;
-  private readonly baseUrl = 'https://api.openweathermap.org/data/2.5';
+class OpenMeteoProvider implements IWeatherProvider {
+  readonly name = DataSource.OPEN_METEO;
+  private readonly baseUrl: string;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  constructor(baseUrl = process.env.OPEN_METEO_API_URL || process.env.WEATHER_API_URL || 'https://api.open-meteo.com/v1') {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
   async fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse> {
-    const url = `${this.baseUrl}/weather`;
+    const url = `${this.baseUrl}/forecast`;
     const res = await axios.get(url, {
-      params: { lat, lon: lng, appid: this.apiKey, units: 'metric' },
+      params: {
+        latitude: lat,
+        longitude: lng,
+        timezone: 'auto',
+        wind_speed_unit: 'kmh',
+        precipitation_unit: 'mm',
+        current: [
+          'temperature_2m',
+          'apparent_temperature',
+          'relative_humidity_2m',
+          'precipitation',
+          'cloud_cover',
+          'pressure_msl',
+          'wind_speed_10m',
+          'wind_direction_10m',
+          'wind_gusts_10m',
+          'visibility',
+          'dew_point_2m',
+          'uv_index',
+        ].join(','),
+      },
       timeout: 8000,
     });
-    const d = res.data;
+    const d = res.data ?? {};
+    const current = d.current ?? {};
+    const fetchedAt = current.time ? new Date(current.time) : new Date();
 
     const reading: IWeatherReading = {
-      temperatureCelsius: d.main?.temp ?? 0,
-      feelsLikeCelsius:   d.main?.feels_like ?? undefined,
-      humidity:           d.main?.humidity ?? 0,
-      windSpeedKph:       d.wind?.speed != null ? +(d.wind.speed * 3.6).toFixed(2) : undefined,
-      windDirectionDeg:   d.wind?.deg ?? undefined,
-      windGustKph:        d.wind?.gust != null ? +(d.wind.gust * 3.6).toFixed(2) : undefined,
-      rainfallMm:         d.rain?.['1h'] ?? d.rain?.['3h'] ?? undefined,
-      cloudCoverPct:      d.clouds?.all ?? undefined,
-      pressureHPa:        d.main?.pressure ?? undefined,
-      uvIndex:            undefined, // separate OWM endpoint — handled by ingest service
-      visibilityKm:       d.visibility != null ? +(d.visibility / 1000).toFixed(2) : undefined,
+      temperatureCelsius: current.temperature_2m ?? 0,
+      feelsLikeCelsius:   current.apparent_temperature ?? undefined,
+      humidity:           current.relative_humidity_2m ?? 0,
+      windSpeedKph:       current.wind_speed_10m ?? undefined,
+      windDirectionDeg:   current.wind_direction_10m ?? undefined,
+      windGustKph:        current.wind_gusts_10m ?? undefined,
+      rainfallMm:         current.precipitation ?? undefined,
+      rainfallMmPerHour:  current.precipitation ?? undefined,
+      cloudCoverPct:      current.cloud_cover ?? undefined,
+      pressureHPa:        current.pressure_msl ?? undefined,
+      uvIndex:            current.uv_index ?? undefined,
+      visibilityKm:       current.visibility != null ? +(current.visibility / 1000).toFixed(2) : undefined,
+      dewPointCelsius:    current.dew_point_2m ?? undefined,
     };
 
     return {
-      source: DataSource.OPEN_WEATHER_MAP,
-      fetchedAt: new Date(),
+      source: DataSource.OPEN_METEO,
+      fetchedAt,
       reading,
-      providerRef: String(d.dt),
+      providerRef: current.time ?? undefined,
       raw: d,
     };
   }
 
   async fetchForecast(lat: number, lng: number, horizon: ForecastHorizon): Promise<IProviderForecastResponse> {
-    // OWM free tier: 5-day hourly (3h slots) via /forecast
+    const isHourly = horizon === ForecastHorizon.HOURLY;
+    const forecastDays = horizon === ForecastHorizon.WEEKLY ? 14 : 7;
     const url = `${this.baseUrl}/forecast`;
     const res = await axios.get(url, {
-      params: { lat, lon: lng, appid: this.apiKey, units: 'metric', cnt: horizon === ForecastHorizon.HOURLY ? 24 : 40 },
+      params: {
+        latitude: lat,
+        longitude: lng,
+        timezone: 'auto',
+        wind_speed_unit: 'kmh',
+        precipitation_unit: 'mm',
+        ...(isHourly
+          ? {
+              hourly: [
+                'temperature_2m',
+                'relative_humidity_2m',
+                'precipitation_probability',
+                'precipitation',
+                'cloud_cover',
+                'wind_speed_10m',
+                'wind_direction_10m',
+                'uv_index',
+              ].join(','),
+              forecast_hours: 24,
+            }
+          : {
+              daily: [
+                'temperature_2m_max',
+                'temperature_2m_min',
+                'relative_humidity_2m_mean',
+                'precipitation_sum',
+                'precipitation_probability_max',
+                'wind_speed_10m_max',
+                'wind_direction_10m_dominant',
+                'cloud_cover_mean',
+                'uv_index_max',
+              ].join(','),
+              forecast_days: forecastDays,
+            }),
+      },
       timeout: 10000,
     });
-    const d = res.data;
-
-    const predictions: IForecastPrediction[] = (d.list ?? []).map((item: Record<string, unknown>) => {
-      const main = item.main as Record<string, number> | undefined;
-      const wind = item.wind as Record<string, number> | undefined;
-      const rain = item.rain as Record<string, number> | undefined;
-      const clouds = item.clouds as Record<string, number> | undefined;
-      const pop = item.pop as number | undefined;
-      return {
-        timestamp:                   new Date((item.dt as number) * 1000),
-        temperatureCelsius:          main?.temp ?? null,
-        tempMinCelsius:              main?.temp_min ?? null,
-        tempMaxCelsius:              main?.temp_max ?? null,
-        humidity:                    main?.humidity ?? null,
-        rainfallMm:                  rain?.['3h'] ?? null,
-        precipitationProbabilityPct: pop != null ? +(pop * 100).toFixed(0) : null,
-        windSpeedKph:                wind?.speed != null ? +(wind.speed * 3.6).toFixed(2) : null,
-        windDirectionDeg:            wind?.deg ?? null,
-        cloudCoverPct:               clouds?.all ?? null,
-        uvIndex:                     null,
-      };
-    });
+    const d = res.data ?? {};
+    const predictions: IForecastPrediction[] = isHourly
+      ? (d.hourly?.time ?? []).map((time: string, index: number) => ({
+          timestamp:                   new Date(time),
+          temperatureCelsius:          d.hourly?.temperature_2m?.[index] ?? null,
+          tempMinCelsius:              null,
+          tempMaxCelsius:              null,
+          humidity:                    d.hourly?.relative_humidity_2m?.[index] ?? null,
+          rainfallMm:                  d.hourly?.precipitation?.[index] ?? null,
+          precipitationProbabilityPct: d.hourly?.precipitation_probability?.[index] ?? null,
+          windSpeedKph:                d.hourly?.wind_speed_10m?.[index] ?? null,
+          windDirectionDeg:            d.hourly?.wind_direction_10m?.[index] ?? null,
+          cloudCoverPct:               d.hourly?.cloud_cover?.[index] ?? null,
+          uvIndex:                     d.hourly?.uv_index?.[index] ?? null,
+        }))
+      : (d.daily?.time ?? []).map((time: string, index: number) => ({
+          timestamp:                   new Date(time),
+          temperatureCelsius:          d.daily?.temperature_2m_max?.[index] ?? null,
+          tempMinCelsius:              d.daily?.temperature_2m_min?.[index] ?? null,
+          tempMaxCelsius:              d.daily?.temperature_2m_max?.[index] ?? null,
+          humidity:                    d.daily?.relative_humidity_2m_mean?.[index] ?? null,
+          rainfallMm:                  d.daily?.precipitation_sum?.[index] ?? null,
+          precipitationProbabilityPct: d.daily?.precipitation_probability_max?.[index] ?? null,
+          windSpeedKph:                d.daily?.wind_speed_10m_max?.[index] ?? null,
+          windDirectionDeg:            d.daily?.wind_direction_10m_dominant?.[index] ?? null,
+          cloudCoverPct:               d.daily?.cloud_cover_mean?.[index] ?? null,
+          uvIndex:                     d.daily?.uv_index_max?.[index] ?? null,
+        }));
 
     const now = new Date();
+    const ttlMs = isHourly ? 2 * 60 * 60 * 1000 : 6 * 60 * 60 * 1000;
 
     return {
-      source: DataSource.OPEN_WEATHER_MAP,
+      source: DataSource.OPEN_METEO,
       fetchedAt: now,
       horizon,
       predictions,
-      modelVersion: 'owm-forecast-v2',
-      expiresAt: new Date(now.getTime() + 3 * 60 * 60 * 1000), // 3h TTL
+      modelVersion: 'open-meteo-v1',
+      expiresAt: new Date(now.getTime() + ttlMs),
       raw: d,
     };
   }
@@ -255,21 +320,17 @@ class WeatherProviderService {
   // ---- Initialisation -------------------------------------------------------
 
   private initDefaultProviders(): void {
-    const owmKey = process.env.OPENWEATHERMAP_API_KEY;
     const tioKey = process.env.TOMORROWIO_API_KEY;
 
-    if (owmKey) {
-      this.registerProvider(new OpenWeatherMapProvider(owmKey), true);
-      logger.info('[WeatherProvider] OpenWeatherMap registered as primary');
-    }
+    this.registerProvider(new OpenMeteoProvider(), true);
+    logger.info('[WeatherProvider] Open-Meteo registered as primary');
+
     if (tioKey) {
       this.registerProvider(new TomorrowIoProvider(tioKey));
       logger.info('[WeatherProvider] Tomorrow.io registered as fallback');
     }
 
-    if (this.fallbackOrder.length === 0) {
-      logger.warn('[WeatherProvider] No API keys configured — weather fetching is disabled');
-    }
+    logger.info(`[WeatherProvider] Active providers: ${this.fallbackOrder.join(', ')}`);
   }
 
   registerProvider(provider: IWeatherProvider, primary = false): void {
@@ -375,4 +436,4 @@ class WeatherProviderService {
 // Singleton
 export const weatherProviderService = new WeatherProviderService();
 export default weatherProviderService;
-export { OpenWeatherMapProvider, TomorrowIoProvider };
+export { OpenMeteoProvider, TomorrowIoProvider };

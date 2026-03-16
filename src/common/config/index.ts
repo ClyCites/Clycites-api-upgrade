@@ -66,6 +66,7 @@ interface Config {
   weather: {
     apiKey: string;
     apiUrl: string;
+    geocodingUrl: string;
   };
   ai: {
     serviceUrl: string;
@@ -161,7 +162,8 @@ const config: Config = {
   },
   weather: {
     apiKey: process.env.WEATHER_API_KEY || '',
-    apiUrl: process.env.WEATHER_API_URL || 'https://api.openweathermap.org/data/2.5',
+    apiUrl: process.env.WEATHER_API_URL || 'https://api.open-meteo.com/v1',
+    geocodingUrl: process.env.WEATHER_GEOCODING_URL || 'https://geocoding-api.open-meteo.com/v1',
   },
   ai: {
     serviceUrl: process.env.AI_SERVICE_URL || 'http://localhost:8000',

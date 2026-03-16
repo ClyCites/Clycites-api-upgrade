@@ -1947,7 +1947,7 @@ export const schemas: Record<string, OpenAPIV3_1.SchemaObject> = {
         },
       },
       qualityFlags: { type: 'array', items: { type: 'string' } },
-      dataSource: { type: 'string', enum: ['open_weather_map', 'tomorrow_io', 'weatherapi', 'meteomatics', 'manual', 'cached', 'iot_device'] },
+      dataSource: { type: 'string', enum: ['open_meteo', 'open_weather_map', 'tomorrow_io', 'weatherapi', 'meteomatics', 'manual', 'cached', 'iot_device'] },
       createdAt: isoDate,
       updatedAt: isoDate,
     },

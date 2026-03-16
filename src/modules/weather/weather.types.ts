@@ -88,6 +88,7 @@ export enum RuleLifecycleStatus {
 
 /** Supported external data sources */
 export enum DataSource {
+  OPEN_METEO       = 'open_meteo',
   OPEN_WEATHER_MAP = 'open_weather_map',
   TOMORROW_IO      = 'tomorrow_io',
   WEATHERAPI       = 'weatherapi',

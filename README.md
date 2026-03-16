@@ -321,7 +321,8 @@ Key variables:
 - `JWT_SECRET` - JWT signing secret
 - `SMTP_*` - Email configuration
 - `MTN_MOMO_*` - Mobile Money integration
-- `WEATHER_API_KEY` - Weather data API key
+- `WEATHER_API_URL` - Open-Meteo forecast base URL
+- `WEATHER_GEOCODING_URL` - Open-Meteo geocoding base URL
 
 ## 🛠️ Development
 
@@ -380,7 +381,7 @@ module/
 - **Email** - Nodemailer (SMTP)
 - **SMS** - Twilio (integration ready)
 - **Payments** - MTN MoMo, Airtel Money (integration ready)
-- **Weather** - OpenWeatherMap API (integration ready)
+- **Weather** - Open-Meteo API (integration ready)
 - **AI/ML** - PlantVillage, Custom AI APIs, TensorFlow, PyTorch
 - **Cloud Storage** - AWS S3, Azure Blob, Google Cloud Storage
 - **Image Processing** - Sharp library for optimization
