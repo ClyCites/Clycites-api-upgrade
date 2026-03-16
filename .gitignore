@@ -54,3 +54,4 @@ temp/
 # Misc
 .cache/
 .parcel-cache/
+__pycache__/
