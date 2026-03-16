@@ -205,6 +205,21 @@ export interface IWeatherReading {
   uvIndex?: number;
   visibilityKm?: number;
   dewPointCelsius?: number;
+  weatherCode?: number;             // Open-Meteo WMO weather code
+  isDay?: boolean;
+  vapourPressureDeficitKPa?: number;
+  evapotranspirationMm?: number;
+  et0FaoEvapotranspirationMm?: number;
+  shortwaveRadiationWm2?: number;
+  directRadiationWm2?: number;
+  diffuseRadiationWm2?: number;
+  directNormalIrradianceWm2?: number;
+  sunshineDurationSeconds?: number;
+  soilTemperature0cm?: number;
+  soilTemperature6cm?: number;
+  soilMoisture0To1cm?: number;
+  soilMoisture1To3cm?: number;
+  soilMoisture3To9cm?: number;
 }
 
 export interface IWeatherSnapshot {
@@ -244,6 +259,25 @@ export interface IForecastPrediction {
   windDirectionDeg?: number;
   cloudCoverPct?: number;
   uvIndex?: number;
+  weatherCode?: number;
+  isDay?: boolean;
+  vapourPressureDeficitKPa?: number;
+  evapotranspirationMm?: number;
+  et0FaoEvapotranspirationMm?: number;
+  shortwaveRadiationWm2?: number;
+  shortwaveRadiationSumMjM2?: number;
+  directRadiationWm2?: number;
+  diffuseRadiationWm2?: number;
+  directNormalIrradianceWm2?: number;
+  sunshineDurationSeconds?: number;
+  daylightDurationSeconds?: number;
+  sunrise?: Date;
+  sunset?: Date;
+  soilTemperature0cm?: number;
+  soilTemperature6cm?: number;
+  soilMoisture0To1cm?: number;
+  soilMoisture1To3cm?: number;
+  soilMoisture3To9cm?: number;
 }
 
 export interface IForecast {

@@ -54,6 +54,19 @@ class OpenMeteoProvider implements IWeatherProvider {
     this.baseUrl = baseUrl.replace(/\/$/, '');
   }
 
+  private getFirstHourlyRecord(hourly: Record<string, unknown> | undefined): Record<string, unknown> {
+    if (!hourly) return {};
+
+    const record: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(hourly)) {
+      if (key === 'time') continue;
+      if (Array.isArray(value)) {
+        record[key] = value[0];
+      }
+    }
+    return record;
+  }
+
   async fetchCurrent(lat: number, lng: number): Promise<IProviderCurrentResponse> {
     const url = `${this.baseUrl}/forecast`;
     const res = await axios.get(url, {
@@ -76,12 +89,33 @@ class OpenMeteoProvider implements IWeatherProvider {
           'visibility',
           'dew_point_2m',
           'uv_index',
+          'weather_code',
+          'is_day',
         ].join(','),
+        hourly: [
+          'weather_code',
+          'is_day',
+          'vapour_pressure_deficit',
+          'evapotranspiration',
+          'et0_fao_evapotranspiration',
+          'shortwave_radiation',
+          'direct_radiation',
+          'diffuse_radiation',
+          'direct_normal_irradiance',
+          'sunshine_duration',
+          'soil_temperature_0cm',
+          'soil_temperature_6cm',
+          'soil_moisture_0_to_1cm',
+          'soil_moisture_1_to_3cm',
+          'soil_moisture_3_to_9cm',
+        ].join(','),
+        forecast_hours: 1,
       },
       timeout: 8000,
     });
     const d = res.data ?? {};
     const current = d.current ?? {};
+    const hourlyCurrent = this.getFirstHourlyRecord(d.hourly);
     const fetchedAt = current.time ? new Date(current.time) : new Date();
 
     const reading: IWeatherReading = {
@@ -98,6 +132,21 @@ class OpenMeteoProvider implements IWeatherProvider {
       uvIndex:            current.uv_index ?? undefined,
       visibilityKm:       current.visibility != null ? +(current.visibility / 1000).toFixed(2) : undefined,
       dewPointCelsius:    current.dew_point_2m ?? undefined,
+      weatherCode:        current.weather_code ?? (hourlyCurrent.weather_code as number | undefined),
+      isDay:              current.is_day != null ? Boolean(current.is_day) : (hourlyCurrent.is_day != null ? Boolean(hourlyCurrent.is_day) : undefined),
+      vapourPressureDeficitKPa:   hourlyCurrent.vapour_pressure_deficit as number | undefined,
+      evapotranspirationMm:       hourlyCurrent.evapotranspiration as number | undefined,
+      et0FaoEvapotranspirationMm: hourlyCurrent.et0_fao_evapotranspiration as number | undefined,
+      shortwaveRadiationWm2:      hourlyCurrent.shortwave_radiation as number | undefined,
+      directRadiationWm2:         hourlyCurrent.direct_radiation as number | undefined,
+      diffuseRadiationWm2:        hourlyCurrent.diffuse_radiation as number | undefined,
+      directNormalIrradianceWm2:  hourlyCurrent.direct_normal_irradiance as number | undefined,
+      sunshineDurationSeconds:    hourlyCurrent.sunshine_duration as number | undefined,
+      soilTemperature0cm:         hourlyCurrent.soil_temperature_0cm as number | undefined,
+      soilTemperature6cm:         hourlyCurrent.soil_temperature_6cm as number | undefined,
+      soilMoisture0To1cm:         hourlyCurrent.soil_moisture_0_to_1cm as number | undefined,
+      soilMoisture1To3cm:         hourlyCurrent.soil_moisture_1_to_3cm as number | undefined,
+      soilMoisture3To9cm:         hourlyCurrent.soil_moisture_3_to_9cm as number | undefined,
     };
 
     return {
@@ -131,6 +180,21 @@ class OpenMeteoProvider implements IWeatherProvider {
                 'wind_speed_10m',
                 'wind_direction_10m',
                 'uv_index',
+                'weather_code',
+                'is_day',
+                'vapour_pressure_deficit',
+                'evapotranspiration',
+                'et0_fao_evapotranspiration',
+                'shortwave_radiation',
+                'direct_radiation',
+                'diffuse_radiation',
+                'direct_normal_irradiance',
+                'sunshine_duration',
+                'soil_temperature_0cm',
+                'soil_temperature_6cm',
+                'soil_moisture_0_to_1cm',
+                'soil_moisture_1_to_3cm',
+                'soil_moisture_3_to_9cm',
               ].join(','),
               forecast_hours: 24,
             }
@@ -145,6 +209,13 @@ class OpenMeteoProvider implements IWeatherProvider {
                 'wind_direction_10m_dominant',
                 'cloud_cover_mean',
                 'uv_index_max',
+                'weather_code',
+                'sunrise',
+                'sunset',
+                'daylight_duration',
+                'sunshine_duration',
+                'shortwave_radiation_sum',
+                'et0_fao_evapotranspiration',
               ].join(','),
               forecast_days: forecastDays,
             }),
@@ -165,6 +236,21 @@ class OpenMeteoProvider implements IWeatherProvider {
           windDirectionDeg:            d.hourly?.wind_direction_10m?.[index] ?? null,
           cloudCoverPct:               d.hourly?.cloud_cover?.[index] ?? null,
           uvIndex:                     d.hourly?.uv_index?.[index] ?? null,
+          weatherCode:                 d.hourly?.weather_code?.[index] ?? null,
+          isDay:                       d.hourly?.is_day?.[index] != null ? Boolean(d.hourly?.is_day?.[index]) : null,
+          vapourPressureDeficitKPa:    d.hourly?.vapour_pressure_deficit?.[index] ?? null,
+          evapotranspirationMm:        d.hourly?.evapotranspiration?.[index] ?? null,
+          et0FaoEvapotranspirationMm:  d.hourly?.et0_fao_evapotranspiration?.[index] ?? null,
+          shortwaveRadiationWm2:       d.hourly?.shortwave_radiation?.[index] ?? null,
+          directRadiationWm2:          d.hourly?.direct_radiation?.[index] ?? null,
+          diffuseRadiationWm2:         d.hourly?.diffuse_radiation?.[index] ?? null,
+          directNormalIrradianceWm2:   d.hourly?.direct_normal_irradiance?.[index] ?? null,
+          sunshineDurationSeconds:     d.hourly?.sunshine_duration?.[index] ?? null,
+          soilTemperature0cm:          d.hourly?.soil_temperature_0cm?.[index] ?? null,
+          soilTemperature6cm:          d.hourly?.soil_temperature_6cm?.[index] ?? null,
+          soilMoisture0To1cm:          d.hourly?.soil_moisture_0_to_1cm?.[index] ?? null,
+          soilMoisture1To3cm:          d.hourly?.soil_moisture_1_to_3cm?.[index] ?? null,
+          soilMoisture3To9cm:          d.hourly?.soil_moisture_3_to_9cm?.[index] ?? null,
         }))
       : (d.daily?.time ?? []).map((time: string, index: number) => ({
           timestamp:                   new Date(time),
@@ -178,6 +264,13 @@ class OpenMeteoProvider implements IWeatherProvider {
           windDirectionDeg:            d.daily?.wind_direction_10m_dominant?.[index] ?? null,
           cloudCoverPct:               d.daily?.cloud_cover_mean?.[index] ?? null,
           uvIndex:                     d.daily?.uv_index_max?.[index] ?? null,
+          weatherCode:                 d.daily?.weather_code?.[index] ?? null,
+          et0FaoEvapotranspirationMm:  d.daily?.et0_fao_evapotranspiration?.[index] ?? null,
+          shortwaveRadiationSumMjM2:   d.daily?.shortwave_radiation_sum?.[index] ?? null,
+          sunshineDurationSeconds:     d.daily?.sunshine_duration?.[index] ?? null,
+          daylightDurationSeconds:     d.daily?.daylight_duration?.[index] ?? null,
+          sunrise:                     d.daily?.sunrise?.[index] ? new Date(d.daily.sunrise[index]) : null,
+          sunset:                      d.daily?.sunset?.[index] ? new Date(d.daily.sunset[index]) : null,
         }));
 
     const now = new Date();

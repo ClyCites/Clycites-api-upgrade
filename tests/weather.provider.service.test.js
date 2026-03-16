@@ -28,6 +28,26 @@ describe('Open-Meteo weather provider', () => {
           visibility: 8000,
           dew_point_2m: 18.4,
           uv_index: 7.1,
+          weather_code: 3,
+          is_day: 1,
+        },
+        hourly: {
+          time: ['2026-03-16T09:00'],
+          weather_code: [3],
+          is_day: [1],
+          vapour_pressure_deficit: [1.23],
+          evapotranspiration: [0.18],
+          et0_fao_evapotranspiration: [0.22],
+          shortwave_radiation: [420],
+          direct_radiation: [260],
+          diffuse_radiation: [160],
+          direct_normal_irradiance: [510],
+          sunshine_duration: [2400],
+          soil_temperature_0cm: [22.5],
+          soil_temperature_6cm: [23.1],
+          soil_moisture_0_to_1cm: [0.19],
+          soil_moisture_1_to_3cm: [0.21],
+          soil_moisture_3_to_9cm: [0.24],
         },
       },
     });
@@ -51,6 +71,21 @@ describe('Open-Meteo weather provider', () => {
       visibilityKm: 8,
       dewPointCelsius: 18.4,
       uvIndex: 7.1,
+      weatherCode: 3,
+      isDay: true,
+      vapourPressureDeficitKPa: 1.23,
+      evapotranspirationMm: 0.18,
+      et0FaoEvapotranspirationMm: 0.22,
+      shortwaveRadiationWm2: 420,
+      directRadiationWm2: 260,
+      diffuseRadiationWm2: 160,
+      directNormalIrradianceWm2: 510,
+      sunshineDurationSeconds: 2400,
+      soilTemperature0cm: 22.5,
+      soilTemperature6cm: 23.1,
+      soilMoisture0To1cm: 0.19,
+      soilMoisture1To3cm: 0.21,
+      soilMoisture3To9cm: 0.24,
     });
   });
 
@@ -67,6 +102,21 @@ describe('Open-Meteo weather provider', () => {
           wind_speed_10m: [12.5, 14.2],
           wind_direction_10m: [205, 220],
           uv_index: [6.2, 7.4],
+          weather_code: [2, 3],
+          is_day: [1, 1],
+          vapour_pressure_deficit: [1.4, 1.7],
+          evapotranspiration: [0.16, 0.21],
+          et0_fao_evapotranspiration: [0.19, 0.25],
+          shortwave_radiation: [410, 560],
+          direct_radiation: [250, 330],
+          diffuse_radiation: [160, 230],
+          direct_normal_irradiance: [520, 710],
+          sunshine_duration: [1800, 2700],
+          soil_temperature_0cm: [21.2, 22.4],
+          soil_temperature_6cm: [22.8, 23.0],
+          soil_moisture_0_to_1cm: [0.18, 0.17],
+          soil_moisture_1_to_3cm: [0.2, 0.19],
+          soil_moisture_3_to_9cm: [0.23, 0.22],
         },
       },
     });
@@ -86,7 +136,70 @@ describe('Open-Meteo weather provider', () => {
       windDirectionDeg: 205,
       cloudCoverPct: 40,
       uvIndex: 6.2,
+      weatherCode: 2,
+      isDay: true,
+      vapourPressureDeficitKPa: 1.4,
+      evapotranspirationMm: 0.16,
+      et0FaoEvapotranspirationMm: 0.19,
+      shortwaveRadiationWm2: 410,
+      directRadiationWm2: 250,
+      diffuseRadiationWm2: 160,
+      directNormalIrradianceWm2: 520,
+      sunshineDurationSeconds: 1800,
+      soilTemperature0cm: 21.2,
+      soilTemperature6cm: 22.8,
+      soilMoisture0To1cm: 0.18,
+      soilMoisture1To3cm: 0.2,
+      soilMoisture3To9cm: 0.23,
     });
+  });
+
+  test('maps daily agronomic forecast fields from Open-Meteo', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        daily: {
+          time: ['2026-03-16'],
+          temperature_2m_max: [29.4],
+          temperature_2m_min: [18.8],
+          relative_humidity_2m_mean: [69],
+          precipitation_sum: [2.4],
+          precipitation_probability_max: [55],
+          wind_speed_10m_max: [18.6],
+          wind_direction_10m_dominant: [214],
+          cloud_cover_mean: [48],
+          uv_index_max: [9.2],
+          weather_code: [95],
+          sunrise: ['2026-03-16T06:54'],
+          sunset: ['2026-03-16T19:01'],
+          daylight_duration: [43594.94],
+          sunshine_duration: [40574.73],
+          shortwave_radiation_sum: [24.89],
+          et0_fao_evapotranspiration: [5.2],
+        },
+      },
+    });
+
+    const provider = new OpenMeteoProvider();
+    const result = await provider.fetchForecast(0.3476, 32.5825, ForecastHorizon.DAILY);
+
+    expect(result.predictions[0]).toMatchObject({
+      tempMaxCelsius: 29.4,
+      tempMinCelsius: 18.8,
+      humidity: 69,
+      rainfallMm: 2.4,
+      precipitationProbabilityPct: 55,
+      windSpeedKph: 18.6,
+      windDirectionDeg: 214,
+      cloudCoverPct: 48,
+      uvIndex: 9.2,
+      weatherCode: 95,
+      sunshineDurationSeconds: 40574.73,
+      daylightDurationSeconds: 43594.94,
+      shortwaveRadiationSumMjM2: 24.89,
+      et0FaoEvapotranspirationMm: 5.2,
+    });
+    expect(result.predictions[0].sunrise).toBeInstanceOf(Date);
+    expect(result.predictions[0].sunset).toBeInstanceOf(Date);
   });
 
   test('registers Open-Meteo as an available provider', () => {

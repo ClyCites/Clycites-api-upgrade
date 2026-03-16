@@ -39,6 +39,18 @@ const QUALITY_BOUNDS: Record<string, { min: number; max: number }> = {
   rainfallMmPerHour:  { min: 0,   max: 300 },
   pressureHPa:        { min: 870, max: 1085 },
   uvIndex:            { min: 0,   max: 12 },
+  vapourPressureDeficitKPa:   { min: 0,   max: 15 },
+  et0FaoEvapotranspirationMm: { min: 0,   max: 20 },
+  shortwaveRadiationWm2:      { min: 0,   max: 1500 },
+  directRadiationWm2:         { min: 0,   max: 1500 },
+  diffuseRadiationWm2:        { min: 0,   max: 1500 },
+  directNormalIrradianceWm2:  { min: 0,   max: 1500 },
+  sunshineDurationSeconds:    { min: 0,   max: 86400 },
+  soilTemperature0cm:         { min: -40, max: 70 },
+  soilTemperature6cm:         { min: -40, max: 70 },
+  soilMoisture0To1cm:         { min: 0,   max: 1 },
+  soilMoisture1To3cm:         { min: 0,   max: 1 },
+  soilMoisture3To9cm:         { min: 0,   max: 1 },
 };
 
 // ============================================================================

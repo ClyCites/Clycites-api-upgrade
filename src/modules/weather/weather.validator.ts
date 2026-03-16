@@ -526,6 +526,66 @@ export const createConditionValidator = [
     .optional()
     .isFloat({ min: 0, max: 360 })
     .withMessage('reading.windDirectionDeg must be between 0 and 360'),
+  body('reading.weatherCode')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('reading.weatherCode must be a non-negative integer'),
+  body('reading.isDay')
+    .optional()
+    .isBoolean()
+    .withMessage('reading.isDay must be a boolean'),
+  body('reading.vapourPressureDeficitKPa')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.vapourPressureDeficitKPa must be a non-negative number'),
+  body('reading.evapotranspirationMm')
+    .optional()
+    .isFloat()
+    .withMessage('reading.evapotranspirationMm must be a number'),
+  body('reading.et0FaoEvapotranspirationMm')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.et0FaoEvapotranspirationMm must be a non-negative number'),
+  body('reading.shortwaveRadiationWm2')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.shortwaveRadiationWm2 must be a non-negative number'),
+  body('reading.directRadiationWm2')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.directRadiationWm2 must be a non-negative number'),
+  body('reading.diffuseRadiationWm2')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.diffuseRadiationWm2 must be a non-negative number'),
+  body('reading.directNormalIrradianceWm2')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.directNormalIrradianceWm2 must be a non-negative number'),
+  body('reading.sunshineDurationSeconds')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('reading.sunshineDurationSeconds must be a non-negative number'),
+  body('reading.soilTemperature0cm')
+    .optional()
+    .isFloat({ min: -80, max: 80 })
+    .withMessage('reading.soilTemperature0cm must be between -80 and 80'),
+  body('reading.soilTemperature6cm')
+    .optional()
+    .isFloat({ min: -80, max: 80 })
+    .withMessage('reading.soilTemperature6cm must be between -80 and 80'),
+  body('reading.soilMoisture0To1cm')
+    .optional()
+    .isFloat({ min: 0, max: 1 })
+    .withMessage('reading.soilMoisture0To1cm must be between 0 and 1'),
+  body('reading.soilMoisture1To3cm')
+    .optional()
+    .isFloat({ min: 0, max: 1 })
+    .withMessage('reading.soilMoisture1To3cm must be between 0 and 1'),
+  body('reading.soilMoisture3To9cm')
+    .optional()
+    .isFloat({ min: 0, max: 1 })
+    .withMessage('reading.soilMoisture3To9cm must be between 0 and 1'),
   body('status')
     .optional()
     .isIn(Object.values(SensorReadingStatus))
